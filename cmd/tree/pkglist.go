@@ -133,7 +133,7 @@ func NewTreePkglistCommand() *cobra.Command {
 			}
 
 			plist := make([]string, 0)
-			for _, p := range reciper.GetDatabase().World() {
+			for _, p := range reciper.GetDatabase().World().List {
 				pkgstr := ""
 				addPkg := true
 				if full {
@@ -170,7 +170,7 @@ func NewTreePkglistCommand() *cobra.Command {
 					if revdeps {
 
 						visited := make(map[string]interface{})
-						for _, revdep := range p.ExpandedRevdeps(reciper.GetDatabase(), visited) {
+						for _, revdep := range p.ExpandedRevdeps(reciper.GetDatabase().World(), visited).List {
 							if full {
 								pkgstr = pkgDetail(revdep)
 							} else if verbose {
@@ -189,7 +189,7 @@ func NewTreePkglistCommand() *cobra.Command {
 					} else if deps {
 
 						Spinner(32)
-						solution, err := depSolver.Install(pkg.Packages{p})
+						solution, err := depSolver.Install(pkg.NewPackages(p))
 						if err != nil {
 							Fatal(err.Error())
 						}

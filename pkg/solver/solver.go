@@ -36,17 +36,17 @@ const (
 // PackageSolver is an interface to a generic package solving algorithm
 type PackageSolver interface {
 	SetDefinitionDatabase(pkg.PackageDatabase)
-	Install(p pkg.Packages) (PackagesAssertions, error)
-	Uninstall(candidate pkg.Package, checkconflicts, full bool) (pkg.Packages, error)
+	Install(p *pkg.Packages) (PackagesAssertions, error)
+	Uninstall(candidate pkg.Package, checkconflicts, full bool) (*pkg.Packages, error)
 	ConflictsWithInstalled(p pkg.Package) (bool, error)
-	ConflictsWith(p pkg.Package, ls pkg.Packages) (bool, error)
-	Conflicts(pack pkg.Package, lsp pkg.Packages) (bool, error)
+	ConflictsWith(p pkg.Package, ls *pkg.Packages) (bool, error)
+	Conflicts(pack pkg.Package, lsp *pkg.Packages) (bool, error)
 
-	World() pkg.Packages
-	Upgrade(checkconflicts, full bool) (pkg.Packages, PackagesAssertions, error)
+	World() *pkg.Packages
+	Upgrade(checkconflicts, full bool) (*pkg.Packages, PackagesAssertions, error)
 
-	UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAssertions, error)
-	UninstallUniverse(toremove pkg.Packages) (pkg.Packages, error)
+	UpgradeUniverse(dropremoved bool) (*pkg.Packages, PackagesAssertions, error)
+	UninstallUniverse(toremove *pkg.Packages) (*pkg.Packages, error)
 
 	SetResolver(PackageResolver)
 
@@ -57,7 +57,7 @@ type PackageSolver interface {
 type Solver struct {
 	DefinitionDatabase pkg.PackageDatabase
 	SolverDatabase     pkg.PackageDatabase
-	Wanted             pkg.Packages
+	Wanted             *pkg.Packages
 	InstalledDatabase  pkg.PackageDatabase
 
 	Resolver PackageResolver
@@ -100,17 +100,16 @@ func (s *Solver) SetResolver(r PackageResolver) {
 	s.Resolver = r
 }
 
-func (s *Solver) World() pkg.Packages {
+func (s *Solver) World() *pkg.Packages {
 	return s.DefinitionDatabase.World()
 }
 
-func (s *Solver) Installed() pkg.Packages {
-
+func (s *Solver) Installed() *pkg.Packages {
 	return s.InstalledDatabase.World()
 }
 
 func (s *Solver) noRulesWorld() bool {
-	for _, p := range s.World() {
+	for _, p := range s.World().List {
 		if len(p.GetConflicts()) != 0 || len(p.GetRequires()) != 0 {
 			return false
 		}
@@ -120,7 +119,7 @@ func (s *Solver) noRulesWorld() bool {
 }
 
 func (s *Solver) noRulesInstalled() bool {
-	for _, p := range s.Installed() {
+	for _, p := range s.Installed().List {
 		if len(p.GetConflicts()) != 0 || len(p.GetRequires()) != 0 {
 			return false
 		}
@@ -131,15 +130,15 @@ func (s *Solver) noRulesInstalled() bool {
 
 func (s *Solver) BuildInstalled() (bf.Formula, error) {
 	var formulas []bf.Formula
-	var packages pkg.Packages
-	for _, p := range s.Installed() {
-		packages = append(packages, p)
-		for _, dep := range p.Related(s.DefinitionDatabase) {
-			packages = append(packages, dep)
+	packages := pkg.NewPackages()
+	for _, p := range s.Installed().List {
+		packages.Put(p)
+		for _, dep := range p.Related(s.DefinitionDatabase.World()).List {
+			packages.Put(dep)
 		}
 	}
 
-	for _, p := range packages {
+	for _, p := range packages.List {
 		solvable, err := p.BuildFormula(s.DefinitionDatabase, s.SolverDatabase)
 		if err != nil {
 			return nil, err
@@ -166,7 +165,7 @@ func (s *Solver) BuildWorld(includeInstalled bool) (bf.Formula, error) {
 		formulas = append(formulas, solvable)
 	}
 
-	for _, p := range s.World() {
+	for _, p := range s.World().List {
 
 		solvable, err := p.BuildFormula(s.DefinitionDatabase, s.SolverDatabase)
 		if err != nil {
@@ -175,6 +174,20 @@ func (s *Solver) BuildWorld(includeInstalled bool) (bf.Formula, error) {
 		formulas = append(formulas, solvable...)
 	}
 	return bf.And(formulas...), nil
+}
+
+func (s *Solver) generateFormulas(formulas []bf.Formula, packs *pkg.Packages) ([]bf.Formula, error) {
+	for _, p := range packs.List {
+		for _, dep := range p.Related(s.DefinitionDatabase.World()).List {
+
+			solvable, err := dep.BuildFormula(s.DefinitionDatabase, s.SolverDatabase)
+			if err != nil {
+				return nil, err
+			}
+			formulas = append(formulas, solvable...)
+		}
+	}
+	return formulas, nil
 }
 
 // BuildWorld builds the formula which olds the requirements from the package definitions
@@ -191,21 +204,11 @@ func (s *Solver) BuildPartialWorld(includeInstalled bool) (bf.Formula, error) {
 		formulas = append(formulas, solvable)
 	}
 
-	var packages pkg.Packages
-	for _, p := range s.Wanted {
-		//	packages = append(packages, p)
-		for _, dep := range p.Related(s.DefinitionDatabase) {
-			packages = append(packages, dep)
-		}
+	var err error
+	formulas, err = s.generateFormulas(formulas, s.Wanted)
 
-	}
-
-	for _, p := range packages {
-		solvable, err := p.BuildFormula(s.DefinitionDatabase, s.SolverDatabase)
-		if err != nil {
-			return nil, err
-		}
-		formulas = append(formulas, solvable...)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(formulas) != 0 {
@@ -215,28 +218,28 @@ func (s *Solver) BuildPartialWorld(includeInstalled bool) (bf.Formula, error) {
 
 }
 
-func (s *Solver) getList(db pkg.PackageDatabase, lsp pkg.Packages) (pkg.Packages, error) {
-	var ls pkg.Packages
+func (s *Solver) getList(db pkg.PackageDatabase, lsp *pkg.Packages) (*pkg.Packages, error) {
+	ls := pkg.NewPackages()
 
-	for _, pp := range lsp {
+	for _, pp := range lsp.List {
 		cp, err := db.FindPackage(pp)
 		if err != nil {
-			packages, err := pp.Expand(db)
+			packages, err := db.FindPackageVersions(pp)
 			// Expand, and relax search - if not found pick the same one
-			if err != nil || len(packages) == 0 {
+			if err != nil || packages.Len() == 0 {
 				cp = pp
 			} else {
 				cp = packages.Best(nil)
 			}
 		}
-		ls = append(ls, cp)
+		ls.Put(cp)
 	}
 	return ls, nil
 }
 
 // Conflicts acts like ConflictsWith, but uses package's reverse dependencies to
 // determine if it conflicts with the given set
-func (s *Solver) Conflicts(pack pkg.Package, lsp pkg.Packages) (bool, error) {
+func (s *Solver) Conflicts(pack pkg.Package, lsp *pkg.Packages) (bool, error) {
 	p, err := s.DefinitionDatabase.FindPackage(pack)
 	if err != nil {
 		p = pack
@@ -251,27 +254,22 @@ func (s *Solver) Conflicts(pack pkg.Package, lsp pkg.Packages) (bool, error) {
 		return false, nil
 	}
 
-	temporarySet := pkg.NewInMemoryDatabase(false)
-	for _, p := range ls {
-		temporarySet.CreatePackage(p)
-	}
 	visited := make(map[string]interface{})
-	revdeps := p.ExpandedRevdeps(temporarySet, visited)
-
+	revdeps := p.ExpandedRevdeps(ls, visited)
 	var revdepsErr error
-	for _, r := range revdeps {
+	for _, r := range revdeps.List {
 		if revdepsErr == nil {
 			revdepsErr = errors.New("")
 		}
 		revdepsErr = errors.New(fmt.Sprintf("%s\n%s", revdepsErr.Error(), r.HumanReadableString()))
 	}
 
-	return len(revdeps) != 0, revdepsErr
+	return !revdeps.Empty(), revdepsErr
 }
 
 // ConflictsWith return true if a package is part of the requirement set of a list of package
 // return false otherwise (and thus it is NOT relevant to the given list)
-func (s *Solver) ConflictsWith(pack pkg.Package, lsp pkg.Packages) (bool, error) {
+func (s *Solver) ConflictsWith(pack pkg.Package, lsp *pkg.Packages) (bool, error) {
 	p, err := s.DefinitionDatabase.FindPackage(pack)
 	if err != nil {
 		p = pack //Relax search, otherwise we cannot compute solutions for packages not in definitions
@@ -302,7 +300,7 @@ func (s *Solver) ConflictsWith(pack pkg.Package, lsp pkg.Packages) (bool, error)
 	}
 	formulas = append(formulas, bf.And(bf.Not(P), r))
 
-	for _, i := range ls {
+	for _, i := range ls.List {
 		if i.Matches(p) {
 			continue
 		}
@@ -338,47 +336,47 @@ func (s *Solver) ConflictsWithInstalled(p pkg.Package) (bool, error) {
 // It can be compared to the counterpart Uninstall as this method acts like a uninstall --full
 // it removes all the packages and its deps. taking also in consideration other packages that might have
 // revdeps
-func (s *Solver) UninstallUniverse(toremove pkg.Packages) (pkg.Packages, error) {
+func (s *Solver) UninstallUniverse(toremove *pkg.Packages) (*pkg.Packages, error) {
 
 	if s.noRulesInstalled() {
 		return s.getList(s.InstalledDatabase, toremove)
 	}
+	markedForRemoval := pkg.NewPackages()
 
 	// resolve to packages from the db
 	toRemove, err := s.getList(s.InstalledDatabase, toremove)
 	if err != nil {
-		return nil, errors.Wrap(err, "Package not found in definition db")
+		return markedForRemoval, errors.Wrap(err, "Package not found in definition db")
 	}
 
 	var formulas []bf.Formula
 	r, err := s.BuildInstalled()
 	if err != nil {
-		return nil, errors.Wrap(err, "Package not found in definition db")
+		return markedForRemoval, errors.Wrap(err, "Package not found in definition db")
 	}
 
 	// SAT encode the clauses against the world
-	for _, p := range toRemove.Unique() {
+	for _, p := range toRemove.Unique().List {
 		encodedP, err := p.Encode(s.InstalledDatabase)
 		if err != nil {
-			return nil, errors.Wrap(err, "Package not found in definition db")
+			return markedForRemoval, errors.Wrap(err, "Package not found in definition db")
 		}
 		P := bf.Var(encodedP)
 		formulas = append(formulas, bf.And(bf.Not(P), r))
 	}
 
-	markedForRemoval := pkg.Packages{}
 	model := bf.Solve(bf.And(formulas...))
 	if model == nil {
-		return nil, errors.New("Failed finding a solution")
+		return markedForRemoval, errors.New("Failed finding a solution")
 	}
 	assertion, err := DecodeModel(model, s.InstalledDatabase)
 	if err != nil {
-		return nil, errors.Wrap(err, "while decoding model from solution")
+		return markedForRemoval, errors.Wrap(err, "while decoding model from solution")
 	}
 	for _, a := range assertion {
 		if !a.Value {
 			if p, err := s.InstalledDatabase.FindPackage(a.Package); err == nil {
-				markedForRemoval = append(markedForRemoval, p)
+				markedForRemoval.Put(p)
 			}
 
 		}
@@ -389,122 +387,124 @@ func (s *Solver) UninstallUniverse(toremove pkg.Packages) (pkg.Packages, error) 
 // UpgradeUniverse mark packages for removal and returns a solution. It considers
 // the Universe db as authoritative
 // See also on the subject: https://arxiv.org/pdf/1007.1021.pdf
-func (s *Solver) UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAssertions, error) {
+func (s *Solver) UpgradeUniverse(dropremoved bool) (*pkg.Packages, PackagesAssertions, error) {
 	// we first figure out which aren't up-to-date
 	// which has to be removed
 	// and which needs to be upgraded
-	notUptodate := pkg.Packages{}
-	removed := pkg.Packages{}
-	toUpgrade := pkg.Packages{}
+	notUptodate := pkg.NewPackages()
+	removed := pkg.NewPackages()
+	toUpgrade := pkg.NewPackages()
+	markedForRemoval := pkg.NewPackages()
 
 	// TODO: this is memory expensive, we need to optimize this
 	universe := pkg.NewInMemoryDatabase(false)
-	for _, p := range s.DefinitionDatabase.World() {
-		universe.CreatePackage(p)
-	}
-	for _, p := range s.Installed() {
-		universe.CreatePackage(p)
-	}
+	s.DefinitionDatabase.Clone(universe)
+	s.Installed().Clone(universe)
 
 	// Grab all the installed ones, see if they are eligible for update
-	for _, p := range s.Installed() {
+	for _, p := range s.Installed().List {
 		available, err := universe.FindPackageVersions(p)
 		if err != nil {
-			removed = append(removed, p)
+			removed.Put(p)
 		}
-		if len(available) == 0 {
+		if available.Len() == 0 {
 			continue
 		}
 
 		bestmatch := available.Best(nil)
 		// Found a better version available
 		if !bestmatch.Matches(p) {
-			notUptodate = append(notUptodate, p)
-			toUpgrade = append(toUpgrade, bestmatch)
+			notUptodate.Put(p)
+			toUpgrade.Put(bestmatch)
 		}
 	}
+
+	fmt.Println("Found", toUpgrade.Unique())
 
 	var formulas []bf.Formula
 
 	// Build constraints for the whole defdb
-	r, err := s.BuildWorld(true)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "couldn't build world constraints")
-	}
+	//	r, err := s.BuildWorld(true)
+	//	if err != nil {
+	//		return nil, nil, errors.Wrap(err, "couldn't build world constraints")
+	//	}
 
 	// Treat removed packages from universe as marked for deletion
 	if dropremoved {
-		notUptodate = append(notUptodate, removed...)
+		notUptodate.Put(removed.List...)
 	}
 
-	// SAT encode the clauses against the world
-	for _, p := range notUptodate.Unique() {
+	var formulas2 []bf.Formula
+
+	var err error
+	//formulas2 = append(formulas2, solvable)
+	formulas2, err = s.generateFormulas(formulas2, notUptodate.Unique())
+	formulas2, err = s.generateFormulas(formulas2, toUpgrade.Unique())
+
+	r := bf.And(formulas2...)
+
+	for _, p := range notUptodate.Unique().List {
+
 		encodedP, err := p.Encode(universe)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "couldn't encode package")
+			return markedForRemoval, nil, errors.Wrap(err, "couldn't encode package")
 		}
 		P := bf.Var(encodedP)
 		formulas = append(formulas, bf.And(bf.Not(P), r))
 	}
 
-	for _, p := range toUpgrade {
+	for _, p := range toUpgrade.Unique().List {
 		encodedP, err := p.Encode(universe)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "couldn't encode package")
+			return markedForRemoval, nil, errors.Wrap(err, "couldn't encode package")
 		}
 		P := bf.Var(encodedP)
 		formulas = append(formulas, bf.And(P, r))
 	}
 
-	markedForRemoval := pkg.Packages{}
-
 	if len(formulas) == 0 {
-		return pkg.Packages{}, PackagesAssertions{}, nil
+		return pkg.NewPackages(), PackagesAssertions{}, nil
 	}
 	model := bf.Solve(bf.And(formulas...))
 	if model == nil {
-		return nil, nil, errors.New("Failed finding a solution")
+		return markedForRemoval, nil, errors.New("Failed finding a solution")
 	}
 
 	assertion, err := DecodeModel(model, universe)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "while decoding model from solution")
+		return markedForRemoval, nil, errors.Wrap(err, "while decoding model from solution")
 	}
 	for _, a := range assertion {
 		if !a.Value {
 			if p, err := s.InstalledDatabase.FindPackage(a.Package); err == nil {
-				markedForRemoval = append(markedForRemoval, p)
+				markedForRemoval.Put(p)
 			}
-
 		}
-
 	}
 	return markedForRemoval, assertion, nil
 }
 
-func (s *Solver) Upgrade(checkconflicts, full bool) (pkg.Packages, PackagesAssertions, error) {
+func (s *Solver) Upgrade(checkconflicts, full bool) (*pkg.Packages, PackagesAssertions, error) {
 
 	// First get candidates that needs to be upgraded..
 
-	toUninstall := pkg.Packages{}
-	toInstall := pkg.Packages{}
+	toUninstall := pkg.NewPackages()
+	toInstall := pkg.NewPackages()
 
 	// we do this in memory so we take into account of provides
 	universe := pkg.NewInMemoryDatabase(false)
-	for _, p := range s.DefinitionDatabase.World() {
-		universe.CreatePackage(p)
-	}
+	s.DefinitionDatabase.Clone(universe)
 
 	installedcopy := pkg.NewInMemoryDatabase(false)
 
-	for _, p := range s.InstalledDatabase.World() {
+	for _, p := range s.InstalledDatabase.World().List {
 		installedcopy.CreatePackage(p)
 		packages, err := universe.FindPackageVersions(p)
-		if err == nil && len(packages) != 0 {
+		if err == nil && !packages.Empty() {
 			best := packages.Best(nil)
 			if !best.Matches(p) {
-				toUninstall = append(toUninstall, p)
-				toInstall = append(toInstall, best)
+				toUninstall.Put(p)
+				toInstall.Put(best)
 			}
 		}
 	}
@@ -513,44 +513,44 @@ func (s *Solver) Upgrade(checkconflicts, full bool) (pkg.Packages, PackagesAsser
 	s2.SetResolver(s.Resolver)
 	if !full {
 		ass := PackagesAssertions{}
-		for _, i := range toInstall {
+		for _, i := range toInstall.List {
 			ass = append(ass, PackageAssert{Package: i.(*pkg.DefaultPackage), Value: true})
 		}
 	}
 	// Then try to uninstall the versions in the system, and store that tree
-	for _, p := range toUninstall {
+	for _, p := range toUninstall.List {
 		r, err := s.Uninstall(p, checkconflicts, false)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "Could not compute upgrade - couldn't uninstall selected candidate "+p.GetFingerPrint())
+			return toUninstall, nil, errors.Wrap(err, "Could not compute upgrade - couldn't uninstall selected candidate "+p.GetFingerPrint())
 		}
-		for _, z := range r {
+		for _, z := range r.List {
 			err = installedcopy.RemovePackage(z)
 			if err != nil {
-				return nil, nil, errors.Wrap(err, "Could not compute upgrade - couldn't remove copy of package targetted for removal")
+				return toUninstall, nil, errors.Wrap(err, "Could not compute upgrade - couldn't remove copy of package targetted for removal")
 			}
 		}
 	}
-	if len(toInstall) == 0 {
+	if toInstall.Empty() {
 		return toUninstall, PackagesAssertions{}, nil
 	}
 	r, e := s2.Install(toInstall)
 	return toUninstall, r, e
 	// To that tree, ask to install the versions that should be upgraded, and try to solve
 	// Return the solution
-
 }
 
 // Uninstall takes a candidate package and return a list of packages that would be removed
 // in order to purge the candidate. Returns error if unsat.
-func (s *Solver) Uninstall(c pkg.Package, checkconflicts, full bool) (pkg.Packages, error) {
-	var res pkg.Packages
+// TODO:XXX Make it work for a list of pkgs instead
+func (s *Solver) Uninstall(c pkg.Package, checkconflicts, full bool) (*pkg.Packages, error) {
+	res := pkg.NewPackages()
 	candidate, err := s.InstalledDatabase.FindPackage(c)
 	if err != nil {
 
 		//	return nil, errors.Wrap(err, "Couldn't find required package in db definition")
-		packages, err := c.Expand(s.InstalledDatabase)
+		packages, err := s.InstalledDatabase.FindPackageVersions(c)
 		//	Info("Expanded", packages, err)
-		if err != nil || len(packages) == 0 {
+		if err != nil || packages.Empty() {
 			candidate = c
 		} else {
 			candidate = packages.Best(nil)
@@ -558,64 +558,58 @@ func (s *Solver) Uninstall(c pkg.Package, checkconflicts, full bool) (pkg.Packag
 		//Relax search, otherwise we cannot compute solutions for packages not in definitions
 		//	return nil, errors.Wrap(err, "Package not found between installed")
 	}
-	// Build a fake "Installed" - Candidate and its requires tree
-	var InstalledMinusCandidate pkg.Packages
 
 	// We are asked to not perform a full uninstall (checking all the possible requires that could
 	// be removed). Let's only check if we can remove the selected package
 	if !full && checkconflicts {
 		if conflicts, err := s.Conflicts(candidate, s.Installed()); conflicts {
-			return nil, err
+			return res, err
 		} else {
-			return pkg.Packages{candidate}, nil
+			return pkg.NewPackages(candidate), nil
 		}
 	}
 
-	// TODO: Can be optimized
-	for _, i := range s.Installed() {
-		if !i.Matches(candidate) {
-			contains, err := candidate.RequiresContains(s.SolverDatabase, i)
-			if err != nil {
-				return nil, errors.Wrap(err, "Failed getting installed list")
-			}
-			if !contains {
-				InstalledMinusCandidate = append(InstalledMinusCandidate, i)
-			}
+	// Build a fake "Installed" - Candidate and its requires tree
+	InstalledMinusCandidate := s.Installed().Search(func(p pkg.Package) bool {
+		if !p.Matches(candidate) {
+			contains, _ := candidate.RequiresContains(s.Installed(), p)
+			return !contains
 		}
-	}
+		return false
+	})
 
 	s2 := NewSolver(Options{Type: SingleCoreSimple}, pkg.NewInMemoryDatabase(false), s.DefinitionDatabase, pkg.NewInMemoryDatabase(false))
 	s2.SetResolver(s.Resolver)
 	// Get the requirements to install the candidate
-	asserts, err := s2.Install(pkg.Packages{candidate})
+	asserts, err := s2.Install(pkg.NewPackages(candidate))
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 	for _, a := range asserts {
 		if a.Value {
 			if !checkconflicts {
-				res = append(res, a.Package)
+				res.Put(a.Package)
 				continue
 			}
 
 			c, err := s.ConflictsWithInstalled(a.Package)
 			if err != nil {
-				return nil, err
+				return res, err
 			}
 
 			// If doesn't conflict with installed we just consider it for removal and look for the next one
 			if !c {
-				res = append(res, a.Package)
+				res.Put(a.Package)
 				continue
 			}
 
 			// If does conflicts, give it another chance by checking conflicts if in case we didn't installed our candidate and all the required packages in the system
 			c, err = s.ConflictsWith(a.Package, InstalledMinusCandidate)
 			if err != nil {
-				return nil, err
+				return res, err
 			}
 			if !c {
-				res = append(res, a.Package)
+				res.Put(a.Package)
 			}
 
 		}
@@ -633,7 +627,7 @@ func (s *Solver) BuildFormula() (bf.Formula, error) {
 		return nil, err
 	}
 
-	for _, wanted := range s.Wanted {
+	for _, wanted := range s.Wanted.List {
 		encodedW, err := wanted.Encode(s.SolverDatabase)
 		if err != nil {
 			return nil, err
@@ -642,20 +636,20 @@ func (s *Solver) BuildFormula() (bf.Formula, error) {
 		//	allW = append(allW, W)
 		installedWorld := s.Installed()
 		//TODO:Optimize
-		if len(installedWorld) == 0 {
+		if installedWorld.Empty() {
 			formulas = append(formulas, W) //bf.And(bf.True, W))
 			continue
 		}
 
-		for _, installed := range installedWorld {
+		installedWorld.Each(func(installed pkg.Package) error {
 			encodedI, err := installed.Encode(s.SolverDatabase)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			I := bf.Var(encodedI)
 			formulas = append(formulas, bf.And(W, I))
-		}
-
+			return nil
+		})
 	}
 
 	formulas = append(formulas, r)
@@ -684,6 +678,7 @@ func (s *Solver) Solve() (PackagesAssertions, error) {
 
 	model, _, err = s.solve(f)
 	if err != nil && s.Resolver != nil {
+		fmt.Println(err)
 		return s.Resolver.Solve(f, s)
 	}
 
@@ -696,7 +691,7 @@ func (s *Solver) Solve() (PackagesAssertions, error) {
 
 // Install given a list of packages, returns package assertions to indicate the packages that must be installed in the system in order
 // to statisfy all the constraints
-func (s *Solver) Install(c pkg.Packages) (PackagesAssertions, error) {
+func (s *Solver) Install(c *pkg.Packages) (PackagesAssertions, error) {
 
 	coll, err := s.getList(s.DefinitionDatabase, c)
 	if err != nil {
@@ -707,13 +702,15 @@ func (s *Solver) Install(c pkg.Packages) (PackagesAssertions, error) {
 
 	if s.noRulesWorld() {
 		var ass PackagesAssertions
-		for _, p := range s.Installed() {
-			ass = append(ass, PackageAssert{Package: p.(*pkg.DefaultPackage), Value: true})
 
-		}
-		for _, p := range s.Wanted {
+		add := func(p pkg.Package) error {
+
 			ass = append(ass, PackageAssert{Package: p.(*pkg.DefaultPackage), Value: true})
+			return nil
 		}
+
+		s.Installed().Each(add)
+		s.Wanted.Each(add)
 		return ass, nil
 	}
 

@@ -12,7 +12,9 @@ require (
 	github.com/docker/docker v17.12.0-ce-rc1.0.20200417035958-130b0bc6032c+incompatible
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/ecooper/qlearning v0.0.0-20160612200101-3075011a69fd
+	github.com/elliotchance/orderedmap v1.3.0
 	github.com/ghodss/yaml v1.0.0
+	github.com/hashicorp/go-multierror v1.0.0
 	github.com/hashicorp/go-version v1.2.0
 	github.com/jinzhu/copier v0.0.0-20180308034124-7e38e58719c3
 	github.com/klauspost/pgzip v1.2.1

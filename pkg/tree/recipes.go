@@ -59,7 +59,7 @@ func WriteDefinitionFile(p pkg.Package, definitionFilePath string) error {
 }
 
 func (r *Recipe) Save(path string) error {
-	for _, p := range r.Database.World() {
+	return r.Database.World().Each(func(p pkg.Package) error {
 		dir := filepath.Join(path, p.GetCategory(), p.GetName(), p.GetVersion())
 		os.MkdirAll(dir, os.ModePerm)
 
@@ -67,8 +67,9 @@ func (r *Recipe) Save(path string) error {
 		if err != nil {
 			return err
 		}
-	}
-	return nil
+		return nil
+
+	})
 }
 
 func (r *Recipe) Load(path string) error {

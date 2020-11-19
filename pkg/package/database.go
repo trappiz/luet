@@ -28,12 +28,13 @@ type PackageDatabase interface {
 }
 
 type PackageSet interface {
+	Clone(PackageSet)
 	GetPackages() []string //Ids
 	CreatePackage(pkg Package) (string, error)
 	GetPackage(ID string) (Package, error)
 	Clean() error
 	FindPackage(Package) (Package, error)
-	FindPackages(p Package) (Packages, error)
+	FindPackages(p Package) (*Packages, error)
 	UpdatePackage(p Package) error
 	GetAllPackages(packages chan Package) error
 	RemovePackage(Package) error
@@ -41,13 +42,13 @@ type PackageSet interface {
 	GetPackageFiles(Package) ([]string, error)
 	SetPackageFiles(*PackageFile) error
 	RemovePackageFiles(Package) error
-	FindPackageVersions(p Package) (Packages, error)
-	World() Packages
+	FindPackageVersions(p Package) (*Packages, error)
+	World() *Packages
 
 	FindPackageCandidate(p Package) (Package, error)
-	FindPackageLabel(labelKey string) (Packages, error)
-	FindPackageLabelMatch(pattern string) (Packages, error)
-	FindPackageMatch(pattern string) (Packages, error)
+	FindPackageLabel(labelKey string) (*Packages, error)
+	FindPackageLabelMatch(pattern string) (*Packages, error)
+	FindPackageMatch(pattern string) (*Packages, error)
 }
 
 type PackageFile struct {

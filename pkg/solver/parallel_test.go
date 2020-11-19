@@ -54,10 +54,10 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
-			Expect(len(solution)).To(Equal(1))
+			Expect(solution.Len()).To(Equal(1))
 		})
 
 		It("Solves correctly if the selected package has no requirements or conflicts and we have installed one package", func() {
@@ -77,11 +77,11 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{B})
+			solution, err := s.Install(pkg.NewPackages(B))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-			Expect(len(solution)).To(Equal(2))
+			Expect(solution.Len()).To(Equal(2))
 		})
 
 		It("Solves correctly if the selected package to install has no requirement or conflicts, but in the world there is one with a requirement", func() {
@@ -103,7 +103,7 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
@@ -111,7 +111,7 @@ var _ = Describe("Parallel", func() {
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: D, Value: true}))
 
-			Expect(len(solution)).To(Equal(3))
+			Expect(solution.Len()).To(Equal(3))
 		})
 
 		It("Solves correctly if the selected package to install has requirements", func() {
@@ -132,13 +132,13 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
 
-			Expect(len(solution)).To(Equal(3))
+			Expect(solution.Len()).To(Equal(3))
 		})
 
 		It("Solves correctly", func() {
@@ -158,12 +158,12 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-			Expect(len(solution)).To(Equal(3))
+			Expect(solution.Len()).To(Equal(3))
 		})
 		It("Solves correctly more complex ones", func() {
 
@@ -183,12 +183,12 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-			Expect(len(solution)).To(Equal(4))
+			Expect(solution.Len()).To(Equal(4))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -211,11 +211,11 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
-			Expect(len(solution)).To(Equal(3))
+			Expect(solution.Len()).To(Equal(3))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -238,11 +238,11 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
-			Expect(len(solution)).To(Equal(3))
+			Expect(solution.Len()).To(Equal(3))
 			Expect(err).ToNot(HaveOccurred())
 		})
 		It("Solves deps with more expansion", func() {
@@ -265,11 +265,11 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{C})
+			solution, err := s.Install(pkg.NewPackages(C))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-			Expect(len(solution)).To(Equal(3))
+			Expect(solution.Len()).To(Equal(3))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -293,11 +293,11 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{&pkg.DefaultPackage{Name: "c", Version: ">1.0", Category: "test"}})
+			solution, err := s.Install(pkg.NewPackages(&pkg.DefaultPackage{Name: "c", Version: ">1.0", Category: "test"}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-			Expect(len(solution)).To(Equal(3))
+			Expect(solution.Len()).To(Equal(3))
 			Expect(err).ToNot(HaveOccurred())
 		})
 		It("Solves deps with more expansion", func() {
@@ -319,11 +319,11 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
-			Expect(len(solution)).To(Equal(3))
+			Expect(solution.Len()).To(Equal(3))
 			Expect(err).ToNot(HaveOccurred())
 		})
 		It("Selects one version", func() {
@@ -347,7 +347,7 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A, B})
+			solution, err := s.Install(pkg.NewPackages(A, B))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D1, Value: true}))
@@ -356,7 +356,7 @@ var _ = Describe("Parallel", func() {
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: false}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D2, Value: false}))
 
-			Expect(len(solution)).To(Equal(5))
+			Expect(solution.Len()).To(Equal(5))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -393,7 +393,7 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{C})
+			solution, err := s.Install(pkg.NewPackages(C))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
@@ -401,7 +401,7 @@ var _ = Describe("Parallel", func() {
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: D, Value: false}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: E, Value: true}))
 
-			Expect(len(solution)).To(Equal(4))
+			Expect(solution.Len()).To(Equal(4))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -433,7 +433,7 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A, B})
+			solution, err := s.Install(pkg.NewPackages(A, B))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: D1, Value: true}))
@@ -442,7 +442,7 @@ var _ = Describe("Parallel", func() {
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: false}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D1, Value: false}))
 
-			Expect(len(solution)).To(Equal(5))
+			Expect(solution.Len()).To(Equal(5))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -478,7 +478,7 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A2, B})
+			solution, err := s.Install(pkg.NewPackages(A2, B))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A2, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: D1, Value: true}))
@@ -488,7 +488,7 @@ var _ = Describe("Parallel", func() {
 			Expect(solution).To(ContainElement(PackageAssert{Package: D1, Value: false}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: E, Value: true}))
 
-			Expect(len(solution)).To(Equal(6))
+			Expect(solution.Len()).To(Equal(6))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -516,7 +516,7 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A2})
+			solution, err := s.Install(pkg.NewPackages(A2))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A2, Value: true}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: D1, Value: true}))
@@ -529,7 +529,7 @@ var _ = Describe("Parallel", func() {
 			Expect(solution).To(ContainElement(PackageAssert{Package: D1, Value: false}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: E, Value: true}))
 
-			Expect(len(solution)).To(Equal(6))
+			Expect(solution.Len()).To(Equal(6))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -557,7 +557,7 @@ var _ = Describe("Parallel", func() {
 			}
 			s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-			solution, err := s.Install([]pkg.Package{A2})
+			solution, err := s.Install(pkg.NewPackages(A2))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A2, Value: true}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: D1, Value: true}))
@@ -570,7 +570,7 @@ var _ = Describe("Parallel", func() {
 			Expect(solution).To(ContainElement(PackageAssert{Package: D1, Value: false}))
 			Expect(solution).ToNot(ContainElement(PackageAssert{Package: E, Value: true}))
 
-			Expect(len(solution)).To(Equal(6))
+			Expect(solution.Len()).To(Equal(6))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -596,10 +596,10 @@ var _ = Describe("Parallel", func() {
 				solution, err := s.Uninstall(A, true, true)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(A))
 
 				//	Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-				Expect(len(solution)).To(Equal(1))
+				Expect(solution.Len()).To(Equal(1))
 			})
 			It("Uninstalls simple package expanded correctly", func() {
 
@@ -622,10 +622,10 @@ var _ = Describe("Parallel", func() {
 				solution, err := s.Uninstall(&pkg.DefaultPackage{Name: "A", Version: ">1.0"}, true, true)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(A))
 
 				//	Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-				Expect(len(solution)).To(Equal(1))
+				Expect(solution.Len()).To(Equal(1))
 			})
 			It("Uninstalls simple packages not in world correctly", func() {
 
@@ -646,10 +646,10 @@ var _ = Describe("Parallel", func() {
 				solution, err := s.Uninstall(A, true, true)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(A))
 
 				//	Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-				Expect(len(solution)).To(Equal(1))
+				Expect(solution.Len()).To(Equal(1))
 			})
 
 			It("Uninstalls complex packages not in world correctly", func() {
@@ -670,9 +670,9 @@ var _ = Describe("Parallel", func() {
 				solution, err := s.Uninstall(A, true, true)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(A))
 
-				Expect(len(solution)).To(Equal(1))
+				Expect(solution.Len()).To(Equal(1))
 			})
 
 			It("Uninstalls complex packages correctly, even if shared deps are required by system packages", func() {
@@ -693,10 +693,10 @@ var _ = Describe("Parallel", func() {
 				solution, err := s.Uninstall(A, true, true)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
-				Expect(solution).ToNot(ContainElement(B))
+				Expect(solution.List).To(ContainElement(A))
+				Expect(solution.List).ToNot(ContainElement(B))
 
-				Expect(len(solution)).To(Equal(1))
+				Expect(solution.Len()).To(Equal(1))
 			})
 
 			It("Uninstalls complex packages in world correctly", func() {
@@ -718,10 +718,10 @@ var _ = Describe("Parallel", func() {
 				solution, err := s.Uninstall(A, true, true)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
-				Expect(solution).To(ContainElement(C))
+				Expect(solution.List).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(C))
 
-				Expect(len(solution)).To(Equal(2))
+				Expect(solution.Len()).To(Equal(2))
 			})
 
 			It("Uninstalls complex package correctly", func() {
@@ -744,11 +744,11 @@ var _ = Describe("Parallel", func() {
 				solution, err := s.Uninstall(A, true, true)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
-				Expect(solution).To(ContainElement(B))
-				Expect(solution).To(ContainElement(D))
+				Expect(solution.List).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(B))
+				Expect(solution.List).To(ContainElement(D))
 
-				Expect(len(solution)).To(Equal(3))
+				Expect(solution.Len()).To(Equal(3))
 
 			})
 
@@ -770,13 +770,13 @@ var _ = Describe("Parallel", func() {
 				}
 				s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-				solution, err := s.UninstallUniverse(pkg.Packages{A})
+				solution, err := s.UninstallUniverse(pkg.NewPackages(A))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(A))
 
 				//	Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-				Expect(len(solution)).To(Equal(1))
+				Expect(solution.Len()).To(Equal(1))
 			})
 			It("UninstallUniverse simple package expanded correctly", func() {
 
@@ -796,14 +796,14 @@ var _ = Describe("Parallel", func() {
 				}
 				s = &Parallel{InstalledDatabase: dbInstalled, Concurrency: 4, DefinitionDatabase: dbDefinitions, ParallelDatabase: db}
 
-				solution, err := s.UninstallUniverse(pkg.Packages{
-					&pkg.DefaultPackage{Name: "A", Version: ">1.0"}})
+				solution, err := s.UninstallUniverse(pkg.NewPackages(
+					&pkg.DefaultPackage{Name: "A", Version: ">1.0"}))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(A))
 
 				//	Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-				Expect(len(solution)).To(Equal(1))
+				Expect(solution.Len()).To(Equal(1))
 			})
 			It("UninstallUniverse simple packages not in world correctly", func() {
 
@@ -821,13 +821,13 @@ var _ = Describe("Parallel", func() {
 					_, err := dbInstalled.CreatePackage(p)
 					Expect(err).ToNot(HaveOccurred())
 				}
-				solution, err := s.UninstallUniverse(pkg.Packages{A})
+				solution, err := s.UninstallUniverse(pkg.NewPackages(A))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(A))
 
 				//	Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
-				Expect(len(solution)).To(Equal(1))
+				Expect(solution.Len()).To(Equal(1))
 			})
 
 			It("UninstallUniverse complex packages not in world correctly", func() {
@@ -845,13 +845,13 @@ var _ = Describe("Parallel", func() {
 					_, err := dbInstalled.CreatePackage(p)
 					Expect(err).ToNot(HaveOccurred())
 				}
-				solution, err := s.UninstallUniverse(pkg.Packages{A})
+				solution, err := s.UninstallUniverse(pkg.NewPackages(A))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
-				Expect(solution).To(ContainElement(B))
+				Expect(solution.List).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(B))
 
-				Expect(len(solution)).To(Equal(2))
+				Expect(solution.Len()).To(Equal(2))
 			})
 
 			It("UninstallUniverse complex packages correctly, even if shared deps are required by system packages", func() {
@@ -871,14 +871,14 @@ var _ = Describe("Parallel", func() {
 					_, err := dbInstalled.CreatePackage(p)
 					Expect(err).ToNot(HaveOccurred())
 				}
-				solution, err := s.UninstallUniverse(pkg.Packages{A})
+				solution, err := s.UninstallUniverse(pkg.NewPackages(A))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
-				Expect(solution).To(ContainElement(B))
-				Expect(solution).To(ContainElement(C))
+				Expect(solution.List).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(B))
+				Expect(solution.List).To(ContainElement(C))
 
-				Expect(len(solution)).To(Equal(3))
+				Expect(solution.Len()).To(Equal(3))
 			})
 
 			It("UninstallUniverse complex packages in world correctly", func() {
@@ -897,13 +897,13 @@ var _ = Describe("Parallel", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.UninstallUniverse(pkg.Packages{A})
+				solution, err := s.UninstallUniverse(pkg.NewPackages(A))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
-				Expect(solution).To(ContainElement(C))
+				Expect(solution.List).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(C))
 
-				Expect(len(solution)).To(Equal(2))
+				Expect(solution.Len()).To(Equal(2))
 			})
 
 			It("UninstallUniverse complex package correctly", func() {
@@ -923,14 +923,14 @@ var _ = Describe("Parallel", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.UninstallUniverse(pkg.Packages{A})
+				solution, err := s.UninstallUniverse(pkg.NewPackages(A))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(solution).To(ContainElement(A))
-				Expect(solution).To(ContainElement(B))
-				Expect(solution).To(ContainElement(D))
+				Expect(solution.List).To(ContainElement(A))
+				Expect(solution.List).To(ContainElement(B))
+				Expect(solution.List).To(ContainElement(D))
 
-				Expect(len(solution)).To(Equal(3))
+				Expect(solution.Len()).To(Equal(3))
 
 			})
 
@@ -1070,7 +1070,7 @@ var _ = Describe("Parallel", func() {
 			}
 
 			val, err := s.Conflicts(D, dbInstalled.World())
-			Expect(err.Error()).To(Equal("\n/A-\n/B-"))
+			Expect(err.Error()).To(Or(Equal("\n/A-\n/B-"), Equal("\n/B-\n/A-")))
 			Expect(val).To(BeTrue())
 		})
 
@@ -1139,8 +1139,8 @@ var _ = Describe("Parallel", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 
-			solution, err := s.Install([]pkg.Package{A})
-			Expect(len(solution)).To(Equal(0))
+			solution, err := s.Install(pkg.NewPackages(A))
+			Expect(solution.Len()).To(Equal(0))
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -1166,7 +1166,7 @@ var _ = Describe("Parallel", func() {
 				_, err := dbInstalled.CreatePackage(p)
 				Expect(err).ToNot(HaveOccurred())
 			}
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
@@ -1176,7 +1176,7 @@ var _ = Describe("Parallel", func() {
 			Expect(solution).To(ContainElement(PackageAssert{Package: H, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: G, Value: true}))
 
-			Expect(len(solution)).To(Equal(6))
+			Expect(solution.Len()).To(Equal(6))
 		})
 	})
 
@@ -1195,15 +1195,14 @@ var _ = Describe("Parallel", func() {
 				_, err := definitions.CreatePackage(p)
 				Expect(err).ToNot(HaveOccurred())
 			}
-			lst, err := a.Expand(definitions)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(lst).To(ContainElement(a11))
-			Expect(lst).To(ContainElement(a1))
-			Expect(lst).To(ContainElement(a01))
-			Expect(lst).To(ContainElement(a02))
-			Expect(lst).To(ContainElement(a03))
-			Expect(lst).ToNot(ContainElement(old))
-			Expect(len(lst)).To(Equal(5))
+			lst := definitions.World().FindPackageVersions(a)
+			Expect(lst.List).To(ContainElement(a11))
+			Expect(lst.List).To(ContainElement(a1))
+			Expect(lst.List).To(ContainElement(a01))
+			Expect(lst.List).To(ContainElement(a02))
+			Expect(lst.List).To(ContainElement(a03))
+			Expect(lst.List).ToNot(ContainElement(old))
+			Expect(lst.Len()).To(Equal(5))
 			p := lst.Best(nil)
 			Expect(p).To(Equal(a03))
 		})
@@ -1232,15 +1231,15 @@ var _ = Describe("Parallel", func() {
 			uninstall, solution, err := s.Upgrade(true, true)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(len(uninstall)).To(Equal(1))
-			Expect(uninstall[0].GetName()).To(Equal("a"))
-			Expect(uninstall[0].GetVersion()).To(Equal("1.1"))
+			Expect(uninstall.Len()).To(Equal(1))
+			Expect(uninstall.List[0].GetName()).To(Equal("a"))
+			Expect(uninstall.List[0].GetVersion()).To(Equal("1.1"))
 
 			Expect(solution).To(ContainElement(PackageAssert{Package: A1, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: false}))
-			Expect(len(solution)).To(Equal(3))
-
+			Expect(solution).ToNot(ContainElement(PackageAssert{Package: C, Value: true}))
+			Expect(solution.Len()).To(Equal(3))
 		})
 
 		It("UpgradeUniverse upgrades correctly", func() {
@@ -1256,16 +1255,16 @@ var _ = Describe("Parallel", func() {
 			uninstall, solution, err := s.UpgradeUniverse(true)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(len(uninstall)).To(Equal(1))
-			Expect(uninstall[0].GetName()).To(Equal("a"))
-			Expect(uninstall[0].GetVersion()).To(Equal("1.1"))
+			Expect(uninstall.Len()).To(Equal(1))
+			Expect(uninstall.List[0].GetName()).To(Equal("a"))
+			Expect(uninstall.List[0].GetVersion()).To(Equal("1.1"))
 
 			Expect(solution).To(ContainElement(PackageAssert{Package: A1, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: false}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: false}))
 
-			Expect(len(solution)).To(Equal(4))
+			Expect(solution.Len()).To(Equal(4))
 		})
 	})
 })

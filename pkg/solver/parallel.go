@@ -32,7 +32,7 @@ type Parallel struct {
 	Concurrency        int
 	DefinitionDatabase pkg.PackageDatabase
 	ParallelDatabase   pkg.PackageDatabase
-	Wanted             pkg.Packages
+	Wanted             *pkg.Packages
 	InstalledDatabase  pkg.PackageDatabase
 
 	Resolver PackageResolver
@@ -47,17 +47,17 @@ func (s *Parallel) SetResolver(r PackageResolver) {
 	s.Resolver = r
 }
 
-func (s *Parallel) World() pkg.Packages {
+func (s *Parallel) World() *pkg.Packages {
 	return s.DefinitionDatabase.World()
 }
 
-func (s *Parallel) Installed() pkg.Packages {
+func (s *Parallel) Installed() *pkg.Packages {
 
 	return s.InstalledDatabase.World()
 }
 
 func (s *Parallel) noRulesWorld() bool {
-	for _, p := range s.World() {
+	for _, p := range s.World().List {
 		if len(p.GetConflicts()) != 0 || len(p.GetRequires()) != 0 {
 			return false
 		}
@@ -67,7 +67,7 @@ func (s *Parallel) noRulesWorld() bool {
 }
 
 func (s *Parallel) noRulesInstalled() bool {
-	for _, p := range s.Installed() {
+	for _, p := range s.Installed().List {
 		if len(p.GetConflicts()) != 0 || len(p.GetRequires()) != 0 {
 			return false
 		}
@@ -76,7 +76,7 @@ func (s *Parallel) noRulesInstalled() bool {
 	return true
 }
 
-func (s *Parallel) buildParallelFormula(formulas []bf.Formula, packages pkg.Packages) (bf.Formula, error) {
+func (s *Parallel) buildParallelFormula(formulas []bf.Formula, packages *pkg.Packages) ([]bf.Formula, error) {
 	var wg = new(sync.WaitGroup)
 	var wg2 = new(sync.WaitGroup)
 
@@ -105,7 +105,7 @@ func (s *Parallel) buildParallelFormula(formulas []bf.Formula, packages pkg.Pack
 		}
 	}()
 
-	for _, p := range packages {
+	for _, p := range packages.List {
 		all <- p
 	}
 
@@ -114,31 +114,37 @@ func (s *Parallel) buildParallelFormula(formulas []bf.Formula, packages pkg.Pack
 	close(results)
 	wg2.Wait()
 
+	return formulas, nil
+}
+
+func (s *Parallel) BuildInstalled() (bf.Formula, error) {
+	var formulas []bf.Formula
+	var err error
+	packages := pkg.NewPackages()
+
+	for _, p := range s.Installed().List {
+		packages.Put(p)
+		for _, dep := range p.Related(s.DefinitionDatabase.World()).List {
+			packages.Put(dep)
+		}
+
+	}
+
+	formulas, err = s.buildParallelFormula(formulas, packages)
+	if err != nil {
+		return nil, err
+	}
 	if len(formulas) != 0 {
 		return bf.And(formulas...), nil
 	}
 	return bf.True, nil
 }
 
-func (s *Parallel) BuildInstalled() (bf.Formula, error) {
-	var formulas []bf.Formula
-
-	var packages pkg.Packages
-	for _, p := range s.Installed() {
-		packages = append(packages, p)
-		for _, dep := range p.Related(s.DefinitionDatabase) {
-			packages = append(packages, dep)
-		}
-
-	}
-
-	return s.buildParallelFormula(formulas, packages)
-}
-
 // BuildWorld builds the formula which olds the requirements from the package definitions
 // which are available (global state)
 func (s *Parallel) BuildWorld(includeInstalled bool) (bf.Formula, error) {
 	var formulas []bf.Formula
+	var err error
 	// NOTE: This block should be enabled in case of very old systems with outdated world sets
 	if includeInstalled {
 		solvable, err := s.BuildInstalled()
@@ -148,13 +154,22 @@ func (s *Parallel) BuildWorld(includeInstalled bool) (bf.Formula, error) {
 		//f = bf.And(f, solvable)
 		formulas = append(formulas, solvable)
 	}
-	return s.buildParallelFormula(formulas, s.World())
+
+	formulas, err = s.buildParallelFormula(formulas, s.World())
+	if err != nil {
+		return nil, err
+	}
+	if len(formulas) != 0 {
+		return bf.And(formulas...), nil
+	}
+	return bf.True, nil
 }
 
 // BuildWorld builds the formula which olds the requirements from the package definitions
 // which are available (global state)
 func (s *Parallel) BuildPartialWorld(includeInstalled bool) (bf.Formula, error) {
 	var formulas []bf.Formula
+	var err error
 	// NOTE: This block should be enabled in case of very old systems with outdated world sets
 	if includeInstalled {
 		solvable, err := s.BuildInstalled()
@@ -167,7 +182,9 @@ func (s *Parallel) BuildPartialWorld(includeInstalled bool) (bf.Formula, error) 
 
 	var wg = new(sync.WaitGroup)
 	var wg2 = new(sync.WaitGroup)
-	var packages pkg.Packages
+
+	world := s.DefinitionDatabase.World()
+	packages := pkg.NewPackages()
 
 	all := make(chan pkg.Package)
 	results := make(chan pkg.Package, 1)
@@ -176,7 +193,7 @@ func (s *Parallel) BuildPartialWorld(includeInstalled bool) (bf.Formula, error) 
 		go func(wg *sync.WaitGroup, c <-chan pkg.Package) {
 			defer wg.Done()
 			for p := range c {
-				for _, dep := range p.Related(s.DefinitionDatabase) {
+				for _, dep := range p.Related(world).List {
 					results <- dep
 				}
 
@@ -187,11 +204,11 @@ func (s *Parallel) BuildPartialWorld(includeInstalled bool) (bf.Formula, error) 
 	go func() {
 		defer wg2.Done()
 		for t := range results {
-			packages = append(packages, t)
+			packages.Put(t)
 		}
 	}()
 
-	for _, p := range s.Wanted {
+	for _, p := range s.Wanted.List {
 		all <- p
 	}
 
@@ -200,13 +217,20 @@ func (s *Parallel) BuildPartialWorld(includeInstalled bool) (bf.Formula, error) 
 	close(results)
 	wg2.Wait()
 
-	return s.buildParallelFormula(formulas, packages)
+	formulas, err = s.buildParallelFormula(formulas, packages)
+	if err != nil {
+		return nil, err
+	}
+	if len(formulas) != 0 {
+		return bf.And(formulas...), nil
+	}
+	return bf.True, nil
 
 	//return s.buildParallelFormula(formulas, s.World())
 }
 
-func (s *Parallel) getList(db pkg.PackageDatabase, lsp pkg.Packages) (pkg.Packages, error) {
-	var ls pkg.Packages
+func (s *Parallel) getList(db pkg.PackageDatabase, lsp *pkg.Packages) (*pkg.Packages, error) {
+	ls := &pkg.Packages{}
 	var wg = new(sync.WaitGroup)
 	var wg2 = new(sync.WaitGroup)
 
@@ -219,9 +243,9 @@ func (s *Parallel) getList(db pkg.PackageDatabase, lsp pkg.Packages) (pkg.Packag
 			for p := range c {
 				cp, err := db.FindPackage(p)
 				if err != nil {
-					packages, err := p.Expand(db)
+					packages, err := db.FindPackageVersions(p)
 					// Expand, and relax search - if not found pick the same one
-					if err != nil || len(packages) == 0 {
+					if err != nil || packages.Len() == 0 {
 						cp = p
 					} else {
 						cp = packages.Best(nil)
@@ -236,11 +260,11 @@ func (s *Parallel) getList(db pkg.PackageDatabase, lsp pkg.Packages) (pkg.Packag
 	go func(wg *sync.WaitGroup) {
 		defer wg2.Done()
 		for t := range results {
-			ls = append(ls, t)
+			ls.Put(t)
 		}
 	}(wg)
 
-	for _, pp := range lsp {
+	for _, pp := range lsp.List {
 		all <- pp
 	}
 
@@ -254,7 +278,7 @@ func (s *Parallel) getList(db pkg.PackageDatabase, lsp pkg.Packages) (pkg.Packag
 
 // Conflicts acts like ConflictsWith, but uses package's reverse dependencies to
 // determine if it conflicts with the given set
-func (s *Parallel) Conflicts(pack pkg.Package, lsp pkg.Packages) (bool, error) {
+func (s *Parallel) Conflicts(pack pkg.Package, lsp *pkg.Packages) (bool, error) {
 	p, err := s.DefinitionDatabase.FindPackage(pack)
 	if err != nil {
 		p = pack
@@ -269,27 +293,23 @@ func (s *Parallel) Conflicts(pack pkg.Package, lsp pkg.Packages) (bool, error) {
 		return false, nil
 	}
 
-	temporarySet := pkg.NewInMemoryDatabase(false)
-	for _, p := range ls {
-		temporarySet.CreatePackage(p)
-	}
 	visited := make(map[string]interface{})
-	revdeps := p.ExpandedRevdeps(temporarySet, visited)
+	revdeps := p.ExpandedRevdeps(ls, visited)
 
 	var revdepsErr error
-	for _, r := range revdeps {
+	for _, r := range revdeps.List {
 		if revdepsErr == nil {
 			revdepsErr = errors.New("")
 		}
 		revdepsErr = errors.New(fmt.Sprintf("%s\n%s", revdepsErr.Error(), r.HumanReadableString()))
 	}
 
-	return len(revdeps) != 0, revdepsErr
+	return revdeps.Len() != 0, revdepsErr
 }
 
 // ConflictsWith return true if a package is part of the requirement set of a list of package
 // return false otherwise (and thus it is NOT relevant to the given list)
-func (s *Parallel) ConflictsWith(pack pkg.Package, lsp pkg.Packages) (bool, error) {
+func (s *Parallel) ConflictsWith(pack pkg.Package, lsp *pkg.Packages) (bool, error) {
 	p, err := s.DefinitionDatabase.FindPackage(pack)
 	if err != nil {
 		p = pack //Relax search, otherwise we cannot compute solutions for packages not in definitions
@@ -357,7 +377,7 @@ func (s *Parallel) ConflictsWith(pack pkg.Package, lsp pkg.Packages) (bool, erro
 		}
 	}()
 
-	for _, p := range ls {
+	for _, p := range ls.List {
 		all <- p
 	}
 
@@ -385,7 +405,7 @@ func (s *Parallel) ConflictsWithInstalled(p pkg.Package) (bool, error) {
 // It can be compared to the counterpart Uninstall as this method acts like a uninstall --full
 // it removes all the packages and its deps. taking also in consideration other packages that might have
 // revdeps
-func (s *Parallel) UninstallUniverse(toremove pkg.Packages) (pkg.Packages, error) {
+func (s *Parallel) UninstallUniverse(toremove *pkg.Packages) (*pkg.Packages, error) {
 
 	if s.noRulesInstalled() {
 		return s.getList(s.InstalledDatabase, toremove)
@@ -404,7 +424,7 @@ func (s *Parallel) UninstallUniverse(toremove pkg.Packages) (pkg.Packages, error
 	}
 
 	// SAT encode the clauses against the world
-	for _, p := range toRemove.Unique() {
+	for _, p := range toRemove.Unique().List {
 		encodedP, err := p.Encode(s.InstalledDatabase)
 		if err != nil {
 			return nil, errors.Wrap(err, "Package not found in definition db")
@@ -413,7 +433,7 @@ func (s *Parallel) UninstallUniverse(toremove pkg.Packages) (pkg.Packages, error
 		formulas = append(formulas, bf.And(bf.Not(P), r))
 	}
 
-	markedForRemoval := pkg.Packages{}
+	markedForRemoval := pkg.NewPackages()
 	model := bf.Solve(bf.And(formulas...))
 	if model == nil {
 		return nil, errors.New("Failed finding a solution")
@@ -425,7 +445,7 @@ func (s *Parallel) UninstallUniverse(toremove pkg.Packages) (pkg.Packages, error
 	for _, a := range assertion {
 		if !a.Value {
 			if p, err := s.InstalledDatabase.FindPackage(a.Package); err == nil {
-				markedForRemoval = append(markedForRemoval, p)
+				markedForRemoval.Put(p)
 			}
 
 		}
@@ -436,29 +456,23 @@ func (s *Parallel) UninstallUniverse(toremove pkg.Packages) (pkg.Packages, error
 // UpgradeUniverse mark packages for removal and returns a solution. It considers
 // the Universe db as authoritative
 // See also on the subject: https://arxiv.org/pdf/1007.1021.pdf
-func (s *Parallel) UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAssertions, error) {
+func (s *Parallel) UpgradeUniverse(dropremoved bool) (*pkg.Packages, PackagesAssertions, error) {
 	var formulas []bf.Formula
 	// we first figure out which aren't up-to-date
 	// which has to be removed
 	// and which needs to be upgraded
-	removed := pkg.Packages{}
+	removed := pkg.NewPackages()
 
 	// TODO: this is memory expensive, we need to optimize this
 	universe := pkg.NewInMemoryDatabase(false)
 
-	for _, p := range s.DefinitionDatabase.World() {
-		universe.CreatePackage(p)
-	}
-	for _, p := range s.Installed() {
-		universe.CreatePackage(p)
-	}
-
+	s.DefinitionDatabase.World().Clone(universe)
+	s.Installed().Clone(universe)
 	// Build constraints for the whole defdb
 	r, err := s.BuildWorld(true)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "couldn't build world constraints")
+		return removed, nil, errors.Wrap(err, "couldn't build world constraints")
 	}
-
 	var wg = new(sync.WaitGroup)
 	var wg2 = new(sync.WaitGroup)
 
@@ -471,9 +485,9 @@ func (s *Parallel) UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAsse
 			for p := range c {
 				available, err := universe.FindPackageVersions(p)
 				if err != nil {
-					removed = append(removed, p) /// FIXME: Racy
+					removed.Put(p) /// FIXME: Racy
 				}
-				if len(available) == 0 {
+				if available.Len() == 0 {
 					continue
 				}
 
@@ -500,7 +514,7 @@ func (s *Parallel) UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAsse
 	}()
 
 	// Grab all the installed ones, see if they are eligible for update
-	for _, p := range s.Installed() {
+	for _, p := range s.Installed().List {
 		all <- p
 	}
 
@@ -513,7 +527,7 @@ func (s *Parallel) UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAsse
 	if dropremoved {
 
 		// SAT encode the clauses against the world
-		for _, p := range removed {
+		for _, p := range removed.List {
 			encodedP, err := p.Encode(universe)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "couldn't encode package")
@@ -523,9 +537,9 @@ func (s *Parallel) UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAsse
 		}
 	}
 
-	markedForRemoval := pkg.Packages{}
+	markedForRemoval := pkg.NewPackages()
 	if len(formulas) == 0 {
-		return pkg.Packages{}, PackagesAssertions{}, nil
+		return nil, PackagesAssertions{}, nil
 	}
 	model := bf.Solve(bf.And(formulas...))
 	if model == nil {
@@ -539,7 +553,7 @@ func (s *Parallel) UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAsse
 	for _, a := range assertion {
 		if !a.Value {
 			if p, err := s.InstalledDatabase.FindPackage(a.Package); err == nil {
-				markedForRemoval = append(markedForRemoval, p)
+				markedForRemoval.Put(p)
 			}
 
 		}
@@ -550,18 +564,16 @@ func (s *Parallel) UpgradeUniverse(dropremoved bool) (pkg.Packages, PackagesAsse
 
 // Upgrade compute upgrades of the package against the world definition.
 // It accepts two boolean indicating if it has to check for conflicts or try to attempt a full upgrade
-func (s *Parallel) Upgrade(checkconflicts, full bool) (pkg.Packages, PackagesAssertions, error) {
+func (s *Parallel) Upgrade(checkconflicts, full bool) (*pkg.Packages, PackagesAssertions, error) {
 
 	// First get candidates that needs to be upgraded..
 
-	toUninstall := pkg.Packages{}
-	toInstall := pkg.Packages{}
+	toUninstall := pkg.NewPackages()
+	toInstall := pkg.NewPackages()
 
 	// we do this in memory so we take into account of provides
 	universe := pkg.NewInMemoryDatabase(false)
-	for _, p := range s.DefinitionDatabase.World() {
-		universe.CreatePackage(p)
-	}
+	s.DefinitionDatabase.World().Clone(universe)
 
 	installedcopy := pkg.NewInMemoryDatabase(false)
 
@@ -577,7 +589,7 @@ func (s *Parallel) Upgrade(checkconflicts, full bool) (pkg.Packages, PackagesAss
 			for p := range c {
 				installedcopy.CreatePackage(p)
 				packages, err := universe.FindPackageVersions(p)
-				if err == nil && len(packages) != 0 {
+				if err == nil && packages.Len() != 0 {
 					best := packages.Best(nil)
 					if !best.Matches(p) {
 						results <- []pkg.Package{p, best}
@@ -591,12 +603,12 @@ func (s *Parallel) Upgrade(checkconflicts, full bool) (pkg.Packages, PackagesAss
 	go func() {
 		defer wg2.Done()
 		for t := range results {
-			toUninstall = append(toUninstall, t[0])
-			toInstall = append(toInstall, t[1])
+			toUninstall.Put(t[0])
+			toInstall.Put(t[1])
 		}
 	}()
 
-	for _, p := range s.InstalledDatabase.World() {
+	for _, p := range s.InstalledDatabase.World().List {
 		all <- p
 	}
 
@@ -609,25 +621,26 @@ func (s *Parallel) Upgrade(checkconflicts, full bool) (pkg.Packages, PackagesAss
 	s2.SetResolver(s.Resolver)
 	if !full {
 		ass := PackagesAssertions{}
-		for _, i := range toInstall {
+		toInstall.Each(func(i pkg.Package) error {
 			ass = append(ass, PackageAssert{Package: i.(*pkg.DefaultPackage), Value: true})
-		}
+			return nil
+		})
 	}
 
 	// Then try to uninstall the versions in the system, and store that tree
-	for _, p := range toUninstall {
+	for _, p := range toUninstall.List {
 		r, err := s.Uninstall(p, checkconflicts, false)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "Could not compute upgrade - couldn't uninstall selected candidate "+p.GetFingerPrint())
+			return toUninstall, nil, errors.Wrap(err, "Could not compute upgrade - couldn't uninstall selected candidate "+p.GetFingerPrint())
 		}
-		for _, z := range r {
+		for _, z := range r.List {
 			err = installedcopy.RemovePackage(z)
 			if err != nil {
-				return nil, nil, errors.Wrap(err, "Could not compute upgrade - couldn't remove copy of package targetted for removal")
+				return toUninstall, nil, errors.Wrap(err, "Could not compute upgrade - couldn't remove copy of package targetted for removal")
 			}
 		}
 	}
-	if len(toInstall) == 0 {
+	if toInstall.Len() == 0 {
 		return toUninstall, PackagesAssertions{}, nil
 	}
 	r, e := s2.Install(toInstall)
@@ -639,15 +652,15 @@ func (s *Parallel) Upgrade(checkconflicts, full bool) (pkg.Packages, PackagesAss
 
 // Uninstall takes a candidate package and return a list of packages that would be removed
 // in order to purge the candidate. Returns error if unsat.
-func (s *Parallel) Uninstall(c pkg.Package, checkconflicts, full bool) (pkg.Packages, error) {
-	var res pkg.Packages
+func (s *Parallel) Uninstall(c pkg.Package, checkconflicts, full bool) (*pkg.Packages, error) {
+	res := pkg.NewPackages()
 	candidate, err := s.InstalledDatabase.FindPackage(c)
 	if err != nil {
 
 		//	return nil, errors.Wrap(err, "Couldn't find required package in db definition")
-		packages, err := c.Expand(s.InstalledDatabase)
+		packages, err := s.InstalledDatabase.FindPackageVersions(c)
 		//	Info("Expanded", packages, err)
-		if err != nil || len(packages) == 0 {
+		if err != nil || packages.Empty() {
 			candidate = c
 		} else {
 			candidate = packages.Best(nil)
@@ -655,8 +668,6 @@ func (s *Parallel) Uninstall(c pkg.Package, checkconflicts, full bool) (pkg.Pack
 		//Relax search, otherwise we cannot compute solutions for packages not in definitions
 		//	return nil, errors.Wrap(err, "Package not found between installed")
 	}
-	// Build a fake "Installed" - Candidate and its requires tree
-	var InstalledMinusCandidate pkg.Packages
 
 	// We are asked to not perform a full uninstall (checking all the possible requires that could
 	// be removed). Let's only check if we can remove the selected package
@@ -664,55 +675,51 @@ func (s *Parallel) Uninstall(c pkg.Package, checkconflicts, full bool) (pkg.Pack
 		if conflicts, err := s.Conflicts(candidate, s.Installed()); conflicts {
 			return nil, err
 		} else {
-			return pkg.Packages{candidate}, nil
+			return pkg.NewPackages(candidate), nil
 		}
 	}
 
-	// TODO: Can be optimized
-	for _, i := range s.Installed() {
-		if !i.Matches(candidate) {
-			contains, err := candidate.RequiresContains(s.ParallelDatabase, i)
-			if err != nil {
-				return nil, errors.Wrap(err, "Failed getting installed list")
-			}
-			if !contains {
-				InstalledMinusCandidate = append(InstalledMinusCandidate, i)
-			}
+	// Build a fake "Installed" - Candidate and its requires tree
+	InstalledMinusCandidate := s.Installed().Search(func(p pkg.Package) bool {
+		if !p.Matches(candidate) {
+			contains, _ := candidate.RequiresContains(s.Installed(), p)
+			return !contains
 		}
-	}
+		return false
+	})
 
 	s2 := &Parallel{Concurrency: s.Concurrency, InstalledDatabase: pkg.NewInMemoryDatabase(false), DefinitionDatabase: s.DefinitionDatabase, ParallelDatabase: pkg.NewInMemoryDatabase(false)}
 	s2.SetResolver(s.Resolver)
 	// Get the requirements to install the candidate
-	asserts, err := s2.Install(pkg.Packages{candidate})
+	asserts, err := s2.Install(pkg.NewPackages(candidate))
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 	for _, a := range asserts {
 		if a.Value {
 			if !checkconflicts {
-				res = append(res, a.Package)
+				res.Put(a.Package)
 				continue
 			}
 
 			c, err := s.ConflictsWithInstalled(a.Package)
 			if err != nil {
-				return nil, err
+				return res, err
 			}
 
 			// If doesn't conflict with installed we just consider it for removal and look for the next one
 			if !c {
-				res = append(res, a.Package)
+				res.Put(a.Package)
 				continue
 			}
 
 			// If does conflicts, give it another chance by checking conflicts if in case we didn't installed our candidate and all the required packages in the system
 			c, err = s.ConflictsWith(a.Package, InstalledMinusCandidate)
 			if err != nil {
-				return nil, err
+				return res, err
 			}
 			if !c {
-				res = append(res, a.Package)
+				res.Put(a.Package)
 			}
 
 		}
@@ -748,12 +755,12 @@ func (s *Parallel) BuildFormula() (bf.Formula, error) {
 				W := bf.Var(encodedW)
 				installedWorld := s.Installed()
 				//TODO:Optimize
-				if len(installedWorld) == 0 {
+				if installedWorld.Len() == 0 {
 					results <- W
 					continue
 				}
 
-				for _, installed := range installedWorld {
+				for _, installed := range installedWorld.List {
 					encodedI, err := installed.Encode(s.ParallelDatabase)
 					if err != nil {
 						panic(err)
@@ -772,7 +779,7 @@ func (s *Parallel) BuildFormula() (bf.Formula, error) {
 		}
 	}()
 
-	for _, wanted := range s.Wanted {
+	for _, wanted := range s.Wanted.List {
 		all <- wanted
 	}
 
@@ -820,7 +827,7 @@ func (s *Parallel) Solve() (PackagesAssertions, error) {
 
 // Install given a list of packages, returns package assertions to indicate the packages that must be installed in the system in order
 // to statisfy all the constraints
-func (s *Parallel) Install(c pkg.Packages) (PackagesAssertions, error) {
+func (s *Parallel) Install(c *pkg.Packages) (PackagesAssertions, error) {
 
 	coll, err := s.getList(s.DefinitionDatabase, c)
 	if err != nil {
@@ -831,13 +838,13 @@ func (s *Parallel) Install(c pkg.Packages) (PackagesAssertions, error) {
 
 	if s.noRulesWorld() {
 		var ass PackagesAssertions
-		for _, p := range s.Installed() {
+		add := func(p pkg.Package) error {
 			ass = append(ass, PackageAssert{Package: p.(*pkg.DefaultPackage), Value: true})
+			return nil
+		}
 
-		}
-		for _, p := range s.Wanted {
-			ass = append(ass, PackageAssert{Package: p.(*pkg.DefaultPackage), Value: true})
-		}
+		s.Installed().Each(add)
+		s.Wanted.Each(add)
 		return ass, nil
 	}
 

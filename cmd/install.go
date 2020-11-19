@@ -46,7 +46,7 @@ var installCmd = &cobra.Command{
 	},
 	Long: `Install packages in parallel`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var toInstall pkg.Packages
+		toInstall := pkg.NewPackages()
 		var systemDB pkg.PackageDatabase
 
 		for _, a := range args {
@@ -54,7 +54,7 @@ var installCmd = &cobra.Command{
 			if err != nil {
 				Fatal("Invalid package string ", a, ": ", err.Error())
 			}
-			toInstall = append(toInstall, pack)
+			toInstall.Put(pack)
 		}
 
 		// This shouldn't be necessary, but we need to unmarshal the repositories to a concrete struct, thus we need to port them back to the Repositories type

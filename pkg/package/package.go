@@ -26,6 +26,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/elliotchance/orderedmap"
+
+	"github.com/hashicorp/go-multierror"
 	"github.com/mudler/luet/pkg/helpers"
 	version "github.com/mudler/luet/pkg/versioner"
 
@@ -40,7 +43,7 @@ import (
 // FIXME: Currently some of the methods are returning DefaultPackages due to JSON serialization of the package
 type Package interface {
 	Encode(PackageDatabase) (string, error)
-	Related(definitiondb PackageDatabase) Packages
+	Related(pkgs *Packages) *Packages
 
 	BuildFormula(PackageDatabase, PackageDatabase) ([]bf.Formula, error)
 
@@ -48,16 +51,15 @@ type Package interface {
 	GetPackageName() string
 	Requires([]*DefaultPackage) Package
 	Conflicts([]*DefaultPackage) Package
-	Revdeps(PackageDatabase) Packages
-	ExpandedRevdeps(definitiondb PackageDatabase, visited map[string]interface{}) Packages
-	LabelDeps(PackageDatabase, string) Packages
+	Revdeps(PackageDatabase) *Packages
+	ExpandedRevdeps(pkgs *Packages, visited map[string]interface{}) *Packages
+	LabelDeps(PackageDatabase, string) *Packages
 
 	GetProvides() []*DefaultPackage
 	SetProvides([]*DefaultPackage) Package
 
 	GetRequires() []*DefaultPackage
 	GetConflicts() []*DefaultPackage
-	Expand(PackageDatabase) (Packages, error)
 	SetCategory(string)
 
 	GetName() string
@@ -66,7 +68,7 @@ type Package interface {
 
 	GetVersion() string
 	SetVersion(string)
-	RequiresContains(PackageDatabase, Package) (bool, error)
+	RequiresContains(*Packages, Package) (bool, error)
 	Matches(m Package) bool
 	BumpBuildVersion() error
 
@@ -123,7 +125,93 @@ type Tree interface {
 	FindPackage(Package) (Package, error)
 }
 
-type Packages []Package
+type Packages struct {
+	Set        *orderedmap.OrderedMap
+	List       []Package
+	VersionMap map[string]map[string]Package
+}
+
+func NewPackages(p ...Package) *Packages {
+	packages := &Packages{Set: orderedmap.NewOrderedMap()}
+	for _, pp := range p {
+		packages.Put(pp)
+	}
+	return packages
+}
+
+func (p *Packages) Clone(set PackageSet) {
+	for _, pp := range p.List {
+		set.CreatePackage(pp)
+	}
+}
+
+func (p *Packages) Duplicate() *Packages {
+	packages := NewPackages()
+
+	for _, pp := range p.List {
+		packages.Put(pp)
+	}
+	return packages
+}
+
+func (p *Packages) Len() int {
+	return len(p.List)
+}
+
+func (p *Packages) Empty() bool {
+	return p.Len() == 0
+}
+
+func (p *Packages) Search(f func(p Package) bool) *Packages {
+	found := NewPackages()
+	for _, pp := range p.List {
+		if f(pp) {
+			found.Put(pp)
+		}
+	}
+	return found
+}
+
+func (p *Packages) Each(f func(p Package) error) error {
+	var err error
+	for _, pp := range p.List {
+		err = multierror.Append(err, f(pp))
+	}
+	return err
+}
+
+func (p *Packages) FindPackageVersions(pack Package) *Packages {
+
+	found := NewPackages()
+	for _, pp := range p.VersionMap[pack.GetPackageName()] {
+		if len(pp.GetVersion()) != 0 {
+			match, _ := pack.SelectorMatchVersion(pp.GetVersion(), nil)
+			if match {
+				found.Put(pp)
+			}
+		} else {
+			found.Put(pp)
+		}
+	}
+	return found
+}
+
+func (p *Packages) Put(packs ...Package) {
+	if p.Set == nil {
+		p.Set = orderedmap.NewOrderedMap()
+	}
+	if p.VersionMap == nil {
+		p.VersionMap = make(map[string]map[string]Package)
+	}
+	for _, pp := range packs {
+		p.Set.Set(pp.GetFingerPrint(), pp)
+		p.List = append(p.List, pp)
+		if _, ok := p.VersionMap[pp.GetPackageName()]; !ok {
+			p.VersionMap[pp.GetPackageName()] = make(map[string]Package)
+		}
+		p.VersionMap[pp.GetPackageName()][pp.GetVersion()] = pp
+	}
+}
 
 // >> Unmarshallers
 // DefaultPackageFromYaml decodes a package from yaml bytes
@@ -469,171 +557,107 @@ func (p *DefaultPackage) Matches(m Package) bool {
 	return false
 }
 
-func (p *DefaultPackage) Expand(definitiondb PackageDatabase) (Packages, error) {
-	var versionsInWorld Packages
-
-	all, err := definitiondb.FindPackages(p)
-	if err != nil {
-		return nil, err
-	}
-	for _, w := range all {
-		match, err := p.SelectorMatchVersion(w.GetVersion(), nil)
-		if err != nil {
-			return nil, err
-		}
-		if match {
-			versionsInWorld = append(versionsInWorld, w)
-		}
-	}
-
-	return versionsInWorld, nil
-}
-
-func (p *DefaultPackage) Revdeps(definitiondb PackageDatabase) Packages {
-	var versionsInWorld Packages
-	for _, w := range definitiondb.World() {
-		if w.Matches(p) {
-			continue
-		}
+func (p *DefaultPackage) Revdeps(definitiondb PackageDatabase) *Packages {
+	versionsInWorld := NewPackages()
+	for _, w := range definitiondb.World().Search(func(w Package) bool { return !w.Matches(p) }).List {
 		for _, re := range w.GetRequires() {
 			if re.Matches(p) {
-				versionsInWorld = append(versionsInWorld, w)
-				versionsInWorld = append(versionsInWorld, w.Revdeps(definitiondb)...)
+				versionsInWorld.Put(w)
+				versionsInWorld.Put(w.Revdeps(definitiondb).List...)
 			}
 		}
 	}
-
 	return versionsInWorld
 }
 
-func walkPackage(p Package, definitiondb PackageDatabase, visited map[string]interface{}) Packages {
-	var versionsInWorld Packages
+func walkPackage(p Package, pkgs *Packages, visited map[string]interface{}) *Packages {
+	versionsInWorld := NewPackages()
 	if _, ok := visited[p.HumanReadableString()]; ok {
 		return versionsInWorld
 	}
 	visited[p.HumanReadableString()] = true
 
 	revdepvisited := make(map[string]interface{})
-	revdeps := p.ExpandedRevdeps(definitiondb, revdepvisited)
-	for _, r := range revdeps {
-		versionsInWorld = append(versionsInWorld, r)
+	revdeps := p.ExpandedRevdeps(pkgs, revdepvisited)
+	for _, r := range revdeps.List {
+		versionsInWorld.Put(r)
 	}
 
 	if !p.IsSelector() {
-		versionsInWorld = append(versionsInWorld, p)
+		versionsInWorld.Put(p)
 	}
 
 	for _, re := range p.GetRequires() {
-		versions, _ := re.Expand(definitiondb)
-		for _, r := range versions {
-
-			versionsInWorld = append(versionsInWorld, r)
-			versionsInWorld = append(versionsInWorld, walkPackage(r, definitiondb, visited)...)
+		for _, r := range pkgs.FindPackageVersions(re).List {
+			versionsInWorld.Put(r)
+			versionsInWorld.Put(walkPackage(r, pkgs, visited).List...)
 		}
-
 	}
 	for _, re := range p.GetConflicts() {
-		versions, _ := re.Expand(definitiondb)
-		for _, r := range versions {
-
-			versionsInWorld = append(versionsInWorld, r)
-			versionsInWorld = append(versionsInWorld, walkPackage(r, definitiondb, visited)...)
-
+		for _, r := range pkgs.FindPackageVersions(re).List {
+			versionsInWorld.Put(r)
+			versionsInWorld.Put(walkPackage(r, pkgs, visited).List...)
 		}
 	}
 	return versionsInWorld.Unique()
 }
 
-func (p *DefaultPackage) Related(definitiondb PackageDatabase) Packages {
-	return walkPackage(p, definitiondb, map[string]interface{}{})
+func (p *DefaultPackage) Related(pkgs *Packages) *Packages {
+	return walkPackage(p, pkgs, map[string]interface{}{})
 }
 
 // ExpandedRevdeps returns the package reverse dependencies,
 // matching also selectors in versions (>, <, >=, <=)
-func (p *DefaultPackage) ExpandedRevdeps(definitiondb PackageDatabase, visited map[string]interface{}) Packages {
-	var versionsInWorld Packages
+func (p *DefaultPackage) ExpandedRevdeps(pkgs *Packages, visited map[string]interface{}) *Packages {
+	versionsInWorld := NewPackages()
 	if _, ok := visited[p.HumanReadableString()]; ok {
 		return versionsInWorld
 	}
 	visited[p.HumanReadableString()] = true
 
-	for _, w := range definitiondb.World() {
-		if w.Matches(p) {
-			continue
-		}
+	pkgs.Search(func(pp Package) bool { return !pp.Matches(p) }).Each(func(w Package) error {
 		match := false
-
 		for _, re := range w.GetRequires() {
-			if re.Matches(p) {
+			if re.Matches(p) || !pkgs.FindPackageVersions(re).Search(func(pp Package) bool { return pp.Matches(p) }).Empty() {
 				match = true
 			}
-			if !match {
-
-				packages, _ := re.Expand(definitiondb)
-				for _, pa := range packages {
-					if pa.Matches(p) {
-						match = true
-					}
-				}
-			}
-
-			//	if ok, _ := w.RequiresContains(definitiondb, p); ok {
-
 		}
-
 		if match {
-			versionsInWorld = append(versionsInWorld, w)
-
-			versionsInWorld = append(versionsInWorld, w.ExpandedRevdeps(definitiondb, visited).Unique()...)
-
+			versionsInWorld.Put(w)
+			versionsInWorld.Put(w.ExpandedRevdeps(pkgs, visited).Unique().List...)
 		}
-		//	}
+		return nil
+	})
 
-	}
 	//visited[p.HumanReadableString()] = true
 	return versionsInWorld.Unique()
 }
 
-func (p *DefaultPackage) LabelDeps(definitiondb PackageDatabase, labelKey string) Packages {
-	var pkgsWithLabelInWorld Packages
-	// TODO: check if integrate some index to improve
-	// research instead of iterate all list.
-	for _, w := range definitiondb.World() {
-		if w.HasLabel(labelKey) {
-			pkgsWithLabelInWorld = append(pkgsWithLabelInWorld, w)
-		}
-	}
-
-	return pkgsWithLabelInWorld
+func (p *DefaultPackage) LabelDeps(definitiondb PackageDatabase, labelKey string) *Packages {
+	return definitiondb.World().Search(func(pp Package) bool { return pp.HasLabel(labelKey) })
 }
 
 func DecodePackage(ID string, db PackageDatabase) (Package, error) {
 	return db.GetPackage(ID)
 }
 
-func (pack *DefaultPackage) scanRequires(definitiondb PackageDatabase, s Package, visited map[string]interface{}) (bool, error) {
+func (pack *DefaultPackage) scanRequires(pkgs *Packages, s Package, visited map[string]interface{}) (bool, error) {
 	if _, ok := visited[pack.HumanReadableString()]; ok {
 		return false, nil
 	}
 	visited[pack.HumanReadableString()] = true
-	p, err := definitiondb.FindPackage(pack)
-	if err != nil {
-		p = pack //relax things
-		//return false, errors.Wrap(err, "Package not found in definition db")
-	}
 
-	for _, re := range p.GetRequires() {
+	for _, re := range pack.GetRequires() {
 		if re.Matches(s) {
 			return true, nil
 		}
 
-		packages, _ := re.Expand(definitiondb)
-		for _, pa := range packages {
+		for _, pa := range pkgs.FindPackageVersions(re).List {
 			if pa.Matches(s) {
 				return true, nil
 			}
 		}
-		if contains, err := re.scanRequires(definitiondb, s, visited); err == nil && contains {
+		if contains, err := re.scanRequires(pkgs, s, visited); err == nil && contains {
 			return true, nil
 		}
 	}
@@ -643,8 +667,8 @@ func (pack *DefaultPackage) scanRequires(definitiondb PackageDatabase, s Package
 
 // RequiresContains recursively scans into the database packages dependencies to find a match with the given package
 // It is used by the solver during uninstall.
-func (pack *DefaultPackage) RequiresContains(definitiondb PackageDatabase, s Package) (bool, error) {
-	return pack.scanRequires(definitiondb, s, make(map[string]interface{}))
+func (pack *DefaultPackage) RequiresContains(pkgs *Packages, s Package) (bool, error) {
+	return pack.scanRequires(pkgs, s, make(map[string]interface{}))
 }
 
 // Best returns the best version of the package (the most bigger) from a list
@@ -655,12 +679,12 @@ func (set Packages) Best(v version.Versioner) Package {
 		v = &version.WrappedVersioner{}
 	}
 	var versionsMap map[string]Package = make(map[string]Package)
-	if len(set) == 0 {
+	if set.Len() == 0 {
 		panic("Best needs a list with elements")
 	}
 
 	versionsRaw := []string{}
-	for _, p := range set {
+	for _, p := range set.List {
 		versionsRaw = append(versionsRaw, p.GetVersion())
 		versionsMap[p.GetVersion()] = p
 	}
@@ -669,15 +693,13 @@ func (set Packages) Best(v version.Versioner) Package {
 	return versionsMap[sorted[len(sorted)-1]]
 }
 
-func (set Packages) Unique() Packages {
-	var result Packages
-	uniq := make(map[string]Package)
-	for _, p := range set {
-		uniq[p.GetFingerPrint()] = p
+func (set Packages) Unique() *Packages {
+	result := NewPackages()
+
+	for el := set.Set.Front(); el != nil; el = el.Next() {
+		result.Put(el.Value.(Package))
 	}
-	for _, p := range uniq {
-		result = append(result, p)
-	}
+
 	return result
 }
 
@@ -701,8 +723,8 @@ func (pack *DefaultPackage) buildFormula(definitiondb PackageDatabase, db Packag
 
 	// Do conflict with other packages versions (if A is selected, then conflict with other versions of A)
 	packages, _ := definitiondb.FindPackageVersions(p)
-	if len(packages) > 0 {
-		for _, cp := range packages {
+	if packages.Len() > 0 {
+		for _, cp := range packages.List {
 			encodedB, err := cp.Encode(db)
 			if err != nil {
 				return nil, err
@@ -722,7 +744,7 @@ func (pack *DefaultPackage) buildFormula(definitiondb PackageDatabase, db Packag
 			}
 
 			packages, err := definitiondb.FindPackages(requiredDef)
-			if err != nil || len(packages) == 0 {
+			if err != nil || packages.Len() == 0 {
 				required = requiredDef
 			} else {
 
@@ -735,7 +757,7 @@ func (pack *DefaultPackage) buildFormula(definitiondb PackageDatabase, db Packag
 				var C bf.Formula
 				if candidateErr == nil {
 					// We have a desired candidate, try to look a solution with that included first
-					for _, o := range packages {
+					for _, o := range packages.List {
 						encodedB, err := o.Encode(db)
 						if err != nil {
 							return nil, err
@@ -757,14 +779,14 @@ func (pack *DefaultPackage) buildFormula(definitiondb PackageDatabase, db Packag
 				}
 
 				// AMO - At most one
-				for _, o := range packages {
+				for _, o := range packages.List {
 					encodedB, err := o.Encode(db)
 					if err != nil {
 						return nil, err
 					}
 					B := bf.Var(encodedB)
 					ALO = append(ALO, B)
-					for _, i := range packages {
+					for _, i := range packages.List {
 						encodedI, err := i.Encode(db)
 						if err != nil {
 							return nil, err
@@ -803,13 +825,13 @@ func (pack *DefaultPackage) buildFormula(definitiondb PackageDatabase, db Packag
 				requiredDef = required.(*DefaultPackage)
 			}
 			packages, err := definitiondb.FindPackages(requiredDef)
-			if err != nil || len(packages) == 0 {
+			if err != nil || packages.Len() == 0 {
 				required = requiredDef
 			} else {
-				if len(packages) == 1 {
-					required = packages[0]
+				if packages.Len() == 1 {
+					required = packages.List[0]
 				} else {
-					for _, p := range packages {
+					for _, p := range packages.List {
 						encodedB, err := p.Encode(db)
 						if err != nil {
 							return nil, err

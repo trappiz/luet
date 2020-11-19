@@ -105,7 +105,7 @@ func (cs *LuetCompiler) CompileWithReverseDeps(keepPermissions bool, ps Compilat
 	for _, a := range artifacts {
 
 		revdeps := a.GetCompileSpec().GetPackage().Revdeps(cs.Database)
-		for _, r := range revdeps {
+		for _, r := range revdeps.List {
 			spec, asserterr := cs.FromPackage(r)
 			if err != nil {
 				return nil, append(err, asserterr)
@@ -506,15 +506,19 @@ func (cs *LuetCompiler) FromDatabase(db pkg.PackageDatabase, minimum bool, dst s
 
 	w := db.World()
 
-	for _, p := range w {
+	err := w.Each(func(p pkg.Package) error {
 		spec, err := cs.FromPackage(p)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if dst != "" {
 			spec.SetOutputPath(dst)
 		}
 		compilerSpecs.Add(spec)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	switch minimum {
@@ -552,7 +556,7 @@ func (cs *LuetCompiler) ComputeDepTree(p CompilationSpec) (solver.PackagesAssert
 
 	s := solver.NewResolver(cs.SolverOptions, pkg.NewInMemoryDatabase(false), cs.Database, pkg.NewInMemoryDatabase(false), cs.Options.SolverOptions.Resolver())
 
-	solution, err := s.Install(pkg.Packages{p.GetPackage()})
+	solution, err := s.Install(pkg.NewPackages(p.GetPackage()))
 	if err != nil {
 		return nil, errors.Wrap(err, "While computing a solution for "+p.GetPackage().HumanReadableString())
 	}

@@ -63,7 +63,7 @@ var _ = Describe("Decoder", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.Install([]pkg.Package{A})
+				solution, err := s.Install(pkg.NewPackages(A))
 				Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 				Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 				Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
@@ -114,7 +114,7 @@ var _ = Describe("Decoder", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.Install([]pkg.Package{A})
+				solution, err := s.Install(pkg.NewPackages(A))
 				Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 				Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 				Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
@@ -180,7 +180,7 @@ var _ = Describe("Decoder", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 
-			solution, err := s.Install([]pkg.Package{A})
+			solution, err := s.Install(pkg.NewPackages(A))
 			Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
@@ -200,7 +200,7 @@ var _ = Describe("Decoder", func() {
 
 			hash := solution.AssertionHash()
 
-			solution, err = s.Install([]pkg.Package{B})
+			solution, err = s.Install(pkg.NewPackages(B))
 			Expect(solution).To(ContainElement(PackageAssert{Package: B, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
 			Expect(solution).To(ContainElement(PackageAssert{Package: C, Value: true}))
@@ -240,10 +240,10 @@ var _ = Describe("Decoder", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 
-			solution, err := s.Install([]pkg.Package{Y})
+			solution, err := s.Install(pkg.NewPackages(Y))
 			Expect(err).ToNot(HaveOccurred())
 
-			solution2, err := s.Install([]pkg.Package{Z})
+			solution2, err := s.Install(pkg.NewPackages(Z))
 			Expect(err).ToNot(HaveOccurred())
 			orderY, err := solution.Order(dbDefinitions, Y.GetFingerPrint())
 			Expect(err).ToNot(HaveOccurred())
@@ -268,10 +268,10 @@ var _ = Describe("Decoder", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 
-			solution, err := s.Install([]pkg.Package{Y})
+			solution, err := s.Install(pkg.NewPackages(Y))
 			Expect(err).ToNot(HaveOccurred())
 
-			solution2, err := s.Install([]pkg.Package{Z})
+			solution2, err := s.Install(pkg.NewPackages(Z))
 			Expect(err).ToNot(HaveOccurred())
 			orderY, err := solution.Order(dbDefinitions, Y.GetFingerPrint())
 			Expect(err).ToNot(HaveOccurred())
@@ -298,10 +298,10 @@ var _ = Describe("Decoder", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 
-			solution, err := s.Install([]pkg.Package{Y})
+			solution, err := s.Install(pkg.NewPackages(Y))
 			Expect(err).ToNot(HaveOccurred())
 
-			solution2, err := s.Install([]pkg.Package{Z})
+			solution2, err := s.Install(pkg.NewPackages(Z))
 			Expect(err).ToNot(HaveOccurred())
 			orderY, err := solution.Order(dbDefinitions, Y.GetFingerPrint())
 			Expect(err).ToNot(HaveOccurred())
@@ -328,13 +328,13 @@ var _ = Describe("Decoder", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 
-			solution, err := s.Install([]pkg.Package{X})
+			solution, err := s.Install(pkg.NewPackages(X))
 			Expect(err).ToNot(HaveOccurred())
 
-			solution2, err := s.Install([]pkg.Package{F})
+			solution2, err := s.Install(pkg.NewPackages(F))
 			Expect(err).ToNot(HaveOccurred())
 
-			solution3, err := s.Install([]pkg.Package{D})
+			solution3, err := s.Install(pkg.NewPackages(D))
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(solution.AssertionHash()).ToNot(Equal(solution2.AssertionHash()))
@@ -368,16 +368,16 @@ var _ = Describe("Decoder", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 
-			solution, err := s.Install([]pkg.Package{X})
+			solution, err := s.Install(pkg.NewPackages(X))
 			Expect(err).ToNot(HaveOccurred())
 
-			solution2, err := s.Install([]pkg.Package{F})
+			solution2, err := s.Install(pkg.NewPackages(F))
 			Expect(err).ToNot(HaveOccurred())
 
-			solution3, err := s.Install([]pkg.Package{D})
+			solution3, err := s.Install(pkg.NewPackages(D))
 			Expect(err).ToNot(HaveOccurred())
 
-			solution4, err := s.Install([]pkg.Package{Y})
+			solution4, err := s.Install(pkg.NewPackages(Y))
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(solution.HashFrom(X)).ToNot(Equal(solution2.HashFrom(F)))
@@ -407,7 +407,7 @@ var _ = Describe("Decoder", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.Install([]pkg.Package{W})
+				solution, err := s.Install(pkg.NewPackages(W))
 				Expect(err).ToNot(HaveOccurred())
 
 				orderW, err := solution.Order(dbDefinitions, W.GetFingerPrint())

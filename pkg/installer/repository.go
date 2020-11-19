@@ -760,13 +760,13 @@ func (r Repositories) World() pkg.Packages {
 	// Get Uniques. Walk in reverse so the definitions of most prio-repo overwrites lower ones
 	// In this way, when we will walk again later the deps sorting them by most higher prio we have better chance of success.
 	for i := len(r) - 1; i >= 0; i-- {
-		for _, p := range r[i].GetTree().GetDatabase().World() {
+		for _, p := range r[i].GetTree().GetDatabase().World().List {
 			cache[p.GetFingerPrint()] = p
 		}
 	}
 
 	for _, v := range cache {
-		world = append(world, v)
+		world.Put(v)
 	}
 
 	return world
@@ -778,7 +778,7 @@ func (r Repositories) SyncDatabase(d pkg.PackageDatabase) {
 	// Get Uniques. Walk in reverse so the definitions of most prio-repo overwrites lower ones
 	// In this way, when we will walk again later the deps sorting them by most higher prio we have better chance of success.
 	for i := len(r) - 1; i >= 0; i-- {
-		for _, p := range r[i].GetTree().GetDatabase().World() {
+		for _, p := range r[i].GetTree().GetDatabase().World().List {
 			if _, ok := cache[p.GetFingerPrint()]; !ok {
 				cache[p.GetFingerPrint()] = true
 				d.CreatePackage(p)
@@ -793,14 +793,14 @@ type PackageMatch struct {
 	Package pkg.Package
 }
 
-func (re Repositories) PackageMatches(p pkg.Packages) []PackageMatch {
+func (re Repositories) PackageMatches(p *pkg.Packages) []PackageMatch {
 	// TODO: Better heuristic. here we pick the first repo that contains the atom, sorted by priority but
 	// we should do a permutations and get the best match, and in case there are more solutions the user should be able to pick
 	sort.Sort(re)
 
 	var matches []PackageMatch
 PACKAGE:
-	for _, pack := range p {
+	for _, pack := range p.List {
 		for _, r := range re {
 			c, err := r.GetTree().GetDatabase().FindPackage(pack)
 			if err == nil {
@@ -814,12 +814,12 @@ PACKAGE:
 
 }
 
-func (re Repositories) ResolveSelectors(p pkg.Packages) pkg.Packages {
+func (re Repositories) ResolveSelectors(p *pkg.Packages) *pkg.Packages {
 	// If a selector is given, get the best from each repo
 	sort.Sort(re) // respect prio
-	var matches pkg.Packages
+	matches := pkg.NewPackages()
 PACKAGE:
-	for _, pack := range p {
+	for _, pack := range p.List {
 	REPOSITORY:
 		for _, r := range re {
 			if pack.IsSelector() {
@@ -830,18 +830,17 @@ PACKAGE:
 					continue REPOSITORY
 				}
 				if err == nil {
-					matches = append(matches, c)
+					matches.Put(c)
 					continue PACKAGE
 				}
 			} else {
 				// If it's not a selector, just append it
-				matches = append(matches, pack)
+				matches.Put(pack)
 			}
 		}
 	}
 
 	return matches
-
 }
 
 func (re Repositories) SearchPackages(p string, o LuetSearchOpts) []PackageMatch {
@@ -850,7 +849,7 @@ func (re Repositories) SearchPackages(p string, o LuetSearchOpts) []PackageMatch
 	var err error
 
 	for _, r := range re {
-		var repoMatches pkg.Packages
+		repoMatches := pkg.NewPackages()
 
 		switch o.Mode {
 		case SRegexPkg:
@@ -861,8 +860,8 @@ func (re Repositories) SearchPackages(p string, o LuetSearchOpts) []PackageMatch
 			repoMatches, err = r.GetTree().GetDatabase().FindPackageLabelMatch(p)
 		}
 
-		if err == nil && len(repoMatches) > 0 {
-			for _, pack := range repoMatches {
+		if err == nil && !repoMatches.Empty() {
+			for _, pack := range repoMatches.List {
 				matches = append(matches, PackageMatch{Package: pack, Repo: r})
 			}
 		}

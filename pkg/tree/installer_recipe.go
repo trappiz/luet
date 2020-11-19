@@ -46,9 +46,7 @@ type InstallerRecipe struct {
 }
 
 func (r *InstallerRecipe) Save(path string) error {
-
-	for _, p := range r.Database.World() {
-
+	return r.Database.World().Each(func(p pkg.Package) error {
 		dir := filepath.Join(path, p.GetCategory(), p.GetName(), p.GetVersion())
 		os.MkdirAll(dir, os.ModePerm)
 		data, err := p.Yaml()
@@ -64,9 +62,8 @@ func (r *InstallerRecipe) Save(path string) error {
 		if helpers.Exists(finalizerPath) { // copy finalizer file from the source tree
 			helpers.CopyFile(finalizerPath, filepath.Join(dir, FinalizerFile))
 		}
-
-	}
-	return nil
+		return nil
+	})
 }
 
 func (r *InstallerRecipe) Load(path string) error {

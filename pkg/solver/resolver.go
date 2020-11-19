@@ -77,11 +77,11 @@ type QLearningResolver struct {
 	Solver  PackageSolver
 	Formula bf.Formula
 
-	Targets pkg.Packages
-	Current pkg.Packages
+	Targets *pkg.Packages
+	Current *pkg.Packages
 
 	observedDelta       int
-	observedDeltaChoice pkg.Packages
+	observedDeltaChoice *pkg.Packages
 
 	Agent *qlearning.SimpleAgent
 }
@@ -115,12 +115,12 @@ func (resolver *QLearningResolver) Solve(f bf.Formula, s PackageSolver) (Package
 
 	// 3 are the action domains, counting noop regardless if enabled or not
 	// get the permutations to attempt
-	resolver.ToAttempt = int(helpers.Factorial(uint64(len(resolver.Solver.(*Solver).Wanted)-1) * ActionDomains)) // TODO: type assertions must go away
+	resolver.ToAttempt = int(helpers.Factorial(uint64(resolver.Solver.(*Solver).Wanted.Len()-1) * ActionDomains)) // TODO: type assertions must go away
 	resolver.Targets = resolver.Solver.(*Solver).Wanted
 
 	resolver.attempts = resolver.Attempts
 
-	resolver.Attempted = make(map[string]bool, len(resolver.Targets))
+	resolver.Attempted = make(map[string]bool, resolver.Targets.Len())
 
 	for resolver.IsComplete() == Going {
 		// Pick the next move, which is going to be a letter choice.
@@ -147,7 +147,7 @@ func (resolver *QLearningResolver) Solve(f bf.Formula, s PackageSolver) (Package
 	// Take the result also if we did  reached overall maximum attempts
 	if resolver.IsComplete() == Solved || resolver.IsComplete() == NoSolution {
 
-		if len(resolver.observedDeltaChoice) != 0 {
+		if resolver.observedDeltaChoice.Len() != 0 {
 			// Take the minimum delta observed choice result, and consume it (Try sets the wanted list)
 			resolver.Solver.(*Solver).Wanted = resolver.observedDeltaChoice
 		}
@@ -177,29 +177,21 @@ func (resolver *QLearningResolver) Try(c Choice) error {
 	packtoAdd := pkg.FromString(pack)
 	resolver.Attempted[pack+strconv.Itoa(int(c.Action))] = true // increase the count
 	s, _ := resolver.Solver.(*Solver)
-	var filtered pkg.Packages
 
 	switch c.Action {
 	case ActionAdded:
 		found := false
-		for _, p := range s.Wanted {
+		for _, p := range s.Wanted.List {
 			if p.String() == pack {
 				found = true
 				break
 			}
 		}
 		if !found {
-			resolver.Solver.(*Solver).Wanted = append(resolver.Solver.(*Solver).Wanted, packtoAdd)
+			resolver.Solver.(*Solver).Wanted.Put(packtoAdd)
 		}
-
 	case ActionRemoved:
-		for _, p := range s.Wanted {
-			if p.String() != pack {
-				filtered = append(filtered, p)
-			}
-		}
-
-		resolver.Solver.(*Solver).Wanted = filtered
+		resolver.Solver.(*Solver).Wanted = s.Wanted.Search(func(p pkg.Package) bool { return p.String() != pack })
 	}
 
 	_, err := resolver.Solver.Solve()
@@ -236,8 +228,8 @@ func (resolver *QLearningResolver) Reward(action *qlearning.StateAction) float32
 	//_, err := resolver.Solver.Solve()
 	err := resolver.Try(*choice)
 
-	toBeInstalled := len(resolver.Solver.(*Solver).Wanted)
-	originalTarget := len(resolver.Targets)
+	toBeInstalled := resolver.Solver.(*Solver).Wanted.Len()
+	originalTarget := resolver.Targets.Len()
 	noaction := choice.Action == NoAction
 	delta := originalTarget - toBeInstalled
 
@@ -269,11 +261,11 @@ func (resolver *QLearningResolver) Reward(action *qlearning.StateAction) float32
 // Next creates a new slice of qlearning.Action instances. A possible
 // action is created for each package that could be removed from the formula's target
 func (resolver *QLearningResolver) Next() []qlearning.Action {
-	actions := make([]qlearning.Action, 0, (len(resolver.Targets)-1)*3)
+	actions := make([]qlearning.Action, 0, (resolver.Targets.Len()-1)*3)
 
 TARGETS:
-	for _, pack := range resolver.Targets {
-		for _, current := range resolver.Solver.(*Solver).Wanted {
+	for _, pack := range resolver.Targets.List {
+		for _, current := range resolver.Solver.(*Solver).Wanted.List {
 			if current.String() == pack.String() {
 				actions = append(actions, &Choice{Package: pack.String(), Action: ActionRemoved})
 				continue TARGETS

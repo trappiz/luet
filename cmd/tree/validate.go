@@ -98,7 +98,7 @@ func validatePackage(p pkg.Package, checkType string, opts *ValidateOpts, recipe
 		},
 	)
 
-	if err != nil || len(found) < 1 {
+	if err != nil || found.Empty() {
 		if err != nil {
 			errstr = err.Error()
 		} else {
@@ -181,7 +181,7 @@ func validatePackage(p pkg.Package, checkType string, opts *ValidateOpts, recipe
 	all = append(all, p.GetConflicts()...)
 	for idx, r := range all {
 
-		var deps pkg.Packages
+		var deps *pkg.Packages
 		var err error
 		if r.IsSelector() {
 			deps, err = reciper.GetDatabase().FindPackages(
@@ -192,10 +192,10 @@ func validatePackage(p pkg.Package, checkType string, opts *ValidateOpts, recipe
 				},
 			)
 		} else {
-			deps = append(deps, r)
+			deps.Put(r)
 		}
 
-		if err != nil || len(deps) < 1 {
+		if err != nil || deps.Empty() {
 			if err != nil {
 				errstr = err.Error()
 			} else {
@@ -242,7 +242,7 @@ func validatePackage(p pkg.Package, checkType string, opts *ValidateOpts, recipe
 				}
 
 				Spinner(32)
-				solution, err := depSolver.Install(pkg.Packages{r})
+				solution, err := depSolver.Install(pkg.NewPackages(r))
 				ass := solution.SearchByName(r.GetPackageName())
 				if err == nil {
 					_, err = solution.Order(reciper.GetDatabase(), ass.Package.GetFingerPrint())
@@ -428,7 +428,7 @@ func NewTreeValidateCommand() *cobra.Command {
 				wg.Add(1)
 				go validateWorker(i, wg, all, &opts)
 			}
-			for _, p := range reciper.GetDatabase().World() {
+			for _, p := range reciper.GetDatabase().World().List {
 				all <- p
 			}
 			close(all)

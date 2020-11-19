@@ -54,7 +54,7 @@ var _ = Describe("Resolver", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.Install([]pkg.Package{A})
+				solution, err := s.Install(pkg.NewPackages(A))
 				Expect(len(solution)).To(Equal(0))
 				Expect(err).To(HaveOccurred())
 			})
@@ -71,15 +71,13 @@ var _ = Describe("Resolver", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				for _, p := range []pkg.Package{C} {
+				for _, p := range pkg.NewPackages(C).List {
 					_, err := dbInstalled.CreatePackage(p)
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.Install([]pkg.Package{D, F}) // D and F should go as they have no deps. A/E should be filtered by QLearn
+				solution, err := s.Install(pkg.NewPackages(D, F)) // D and F should go as they have no deps. A/E should be filtered by QLearn
 				Expect(err).ToNot(HaveOccurred())
-
-				Expect(len(solution)).To(Equal(3))
 
 				Expect(solution).ToNot(ContainElement(PackageAssert{Package: A, Value: true}))
 				Expect(solution).ToNot(ContainElement(PackageAssert{Package: B, Value: true}))
@@ -87,6 +85,7 @@ var _ = Describe("Resolver", func() {
 				Expect(solution).To(ContainElement(PackageAssert{Package: D, Value: true}))
 				Expect(solution).ToNot(ContainElement(PackageAssert{Package: E, Value: true}))
 				Expect(solution).To(ContainElement(PackageAssert{Package: F, Value: true}))
+				Expect(len(solution)).To(Equal(3))
 
 			})
 
@@ -109,7 +108,7 @@ var _ = Describe("Resolver", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.Install([]pkg.Package{A, D})
+				solution, err := s.Install(pkg.NewPackages(A, D))
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(solution).ToNot(ContainElement(PackageAssert{Package: A, Value: true}))
@@ -139,7 +138,7 @@ var _ = Describe("Resolver", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.Install([]pkg.Package{A, D, E, F}) // D and F should go as they have no deps. A/E should be filtered by QLearn
+				solution, err := s.Install(pkg.NewPackages(A, D, E, F)) // D and F should go as they have no deps. A/E should be filtered by QLearn
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(solution).ToNot(ContainElement(PackageAssert{Package: A, Value: true}))
@@ -170,7 +169,7 @@ var _ = Describe("Resolver", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				solution, err := s.Install([]pkg.Package{A, D})
+				solution, err := s.Install(pkg.NewPackages(A, D))
 				Expect(err).To(HaveOccurred())
 
 				Expect(len(solution)).To(Equal(0))

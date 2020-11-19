@@ -136,7 +136,7 @@ var searchCmd = &cobra.Command{
 					}
 				} else {
 					visited := make(map[string]interface{})
-					for _, revdep := range m.Package.ExpandedRevdeps(m.Repo.GetTree().GetDatabase(), visited) {
+					for _, revdep := range m.Package.ExpandedRevdeps(m.Repo.GetTree().GetDatabase().World(), visited).List {
 						if !revdep.IsHidden() || revdep.IsHidden() && hidden {
 							Info(fmt.Sprintf(":file_folder:%s", m.Repo.GetName()), fmt.Sprintf(":package:%s", revdep.HumanReadableString()))
 							results.Packages = append(results.Packages,
@@ -162,7 +162,7 @@ var searchCmd = &cobra.Command{
 			system := &installer.System{Database: systemDB, Target: LuetCfg.GetSystem().Rootfs}
 
 			var err error
-			iMatches := pkg.Packages{}
+			iMatches := pkg.NewPackages()
 			if searchWithLabel {
 				iMatches, err = system.Database.FindPackageLabel(args[0])
 			} else if searchWithLabelMatch {
@@ -175,7 +175,7 @@ var searchCmd = &cobra.Command{
 				Fatal("Error: " + err.Error())
 			}
 
-			for _, pack := range iMatches {
+			for _, pack := range iMatches.List {
 				if !revdeps {
 					if !pack.IsHidden() || pack.IsHidden() && hidden {
 						Info(fmt.Sprintf(":package:%s", pack.HumanReadableString()))
@@ -191,7 +191,7 @@ var searchCmd = &cobra.Command{
 				} else {
 					visited := make(map[string]interface{})
 
-					for _, revdep := range pack.ExpandedRevdeps(system.Database, visited) {
+					for _, revdep := range pack.ExpandedRevdeps(system.Database.World(), visited).List {
 						if !revdep.IsHidden() || revdep.IsHidden() && hidden {
 							Info(fmt.Sprintf(":package:%s", pack.HumanReadableString()))
 							results.Packages = append(results.Packages,

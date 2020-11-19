@@ -197,7 +197,7 @@ var buildCmd = &cobra.Command{
 		} else {
 			w := generalRecipe.GetDatabase().World()
 
-			for _, p := range w {
+			for _, p := range w.List {
 				spec, err := luetCompiler.FromPackage(p)
 				if err != nil {
 					Fatal("Error: " + err.Error())

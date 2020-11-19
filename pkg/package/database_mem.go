@@ -224,29 +224,29 @@ func (db *InMemoryDatabase) FindPackage(p Package) (Package, error) {
 }
 
 // FindPackages return the list of the packages beloging to cat/name
-func (db *InMemoryDatabase) FindPackageVersions(p Package) (Packages, error) {
+func (db *InMemoryDatabase) FindPackageVersions(p Package) (*Packages, error) {
 	// Provides: Treat as the replaced package here
 	if provided, err := db.getProvide(p); err == nil {
 		p = provided
 	}
-
+	versionsInWorld := NewPackages()
 	versions, ok := db.CacheNoVersion[p.GetPackageName()]
 	if !ok {
-		return nil, errors.New("No versions found for package")
+		return versionsInWorld, errors.New("No versions found for package")
 	}
-	var versionsInWorld []Package
-	for ve, _ := range versions {
+	for ve := range versions {
 		w, err := db.FindPackage(&DefaultPackage{Name: p.GetName(), Category: p.GetCategory(), Version: ve})
 		if err != nil {
-			return nil, errors.Wrap(err, "Cache mismatch - this shouldn't happen")
+			return versionsInWorld, errors.Wrap(err, "Cache mismatch - this shouldn't happen")
 		}
-		versionsInWorld = append(versionsInWorld, w)
+		versionsInWorld.Put(w)
 	}
-	return Packages(versionsInWorld), nil
+	return versionsInWorld, nil
 }
 
 // FindPackages return the list of the packages beloging to cat/name (any versions in requested range)
-func (db *InMemoryDatabase) FindPackages(p Package) (Packages, error) {
+func (db *InMemoryDatabase) FindPackages(p Package) (*Packages, error) {
+	versionsInWorld := NewPackages()
 
 	// Provides: Treat as the replaced package here
 	if provided, err := db.getProvide(p); err == nil {
@@ -254,24 +254,23 @@ func (db *InMemoryDatabase) FindPackages(p Package) (Packages, error) {
 	}
 	versions, ok := db.CacheNoVersion[p.GetPackageName()]
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("No versions found for: %s", p.HumanReadableString()))
+		return versionsInWorld, errors.New(fmt.Sprintf("No versions found for: %s", p.HumanReadableString()))
 	}
-	var versionsInWorld []Package
 	for ve, _ := range versions {
 		match, err := p.SelectorMatchVersion(ve, nil)
 		if err != nil {
-			return nil, errors.Wrap(err, "Error on match selector")
+			return versionsInWorld, errors.Wrap(err, "Error on match selector")
 		}
 
 		if match {
 			w, err := db.FindPackage(&DefaultPackage{Name: p.GetName(), Category: p.GetCategory(), Version: ve})
 			if err != nil {
-				return nil, errors.Wrap(err, "Cache mismatch - this shouldn't happen")
+				return versionsInWorld, errors.Wrap(err, "Cache mismatch - this shouldn't happen")
 			}
-			versionsInWorld = append(versionsInWorld, w)
+			versionsInWorld.Put(w)
 		}
 	}
-	return Packages(versionsInWorld), nil
+	return versionsInWorld, nil
 }
 
 func (db *InMemoryDatabase) UpdatePackage(p Package) error {
@@ -333,16 +332,16 @@ func (db *InMemoryDatabase) RemovePackage(p Package) error {
 	delete(db.Database, p.GetFingerPrint())
 	return nil
 }
-func (db *InMemoryDatabase) World() Packages {
-	var all []Package
+func (db *InMemoryDatabase) World() *Packages {
+	all := NewPackages()
 	// FIXME: This should all be locked in the db - for now forbid the solver to be run in threads.
 	for _, k := range db.GetPackages() {
 		pack, err := db.GetPackage(k)
 		if err == nil {
-			all = append(all, pack)
+			all.Put(pack)
 		}
 	}
-	return Packages(all)
+	return all
 }
 
 func (db *InMemoryDatabase) FindPackageCandidate(p Package) (Package, error) {
@@ -350,24 +349,22 @@ func (db *InMemoryDatabase) FindPackageCandidate(p Package) (Package, error) {
 	required, err := db.FindPackage(p)
 	if err != nil {
 		//	return nil, errors.Wrap(err, "Couldn't find required package in db definition")
-		packages, err := p.Expand(db)
+		packages := db.World().FindPackageVersions(p)
 		//	Info("Expanded", packages, err)
-		if err != nil || len(packages) == 0 {
+		if packages.Len() == 0 {
 			required = p
 		} else {
 			required = packages.Best(nil)
-
 		}
 		return required, nil
-		//required = &DefaultPackage{Name: "test"}
 	}
 
 	return required, err
 
 }
 
-func (db *InMemoryDatabase) FindPackageLabel(labelKey string) (Packages, error) {
-	var ans []Package
+func (db *InMemoryDatabase) FindPackageLabel(labelKey string) (*Packages, error) {
+	ans := NewPackages()
 
 	for _, k := range db.GetPackages() {
 		pack, err := db.GetPackage(k)
@@ -375,19 +372,19 @@ func (db *InMemoryDatabase) FindPackageLabel(labelKey string) (Packages, error) 
 			return ans, err
 		}
 		if pack.HasLabel(labelKey) {
-			ans = append(ans, pack)
+			ans.Put(pack)
 		}
 	}
 
-	return Packages(ans), nil
+	return ans, nil
 }
 
-func (db *InMemoryDatabase) FindPackageLabelMatch(pattern string) (Packages, error) {
-	var ans []Package
+func (db *InMemoryDatabase) FindPackageLabelMatch(pattern string) (*Packages, error) {
+	ans := NewPackages()
 
 	re := regexp.MustCompile(pattern)
 	if re == nil {
-		return nil, errors.New("Invalid regex " + pattern + "!")
+		return ans, errors.New("Invalid regex " + pattern + "!")
 	}
 
 	for _, k := range db.GetPackages() {
@@ -396,19 +393,25 @@ func (db *InMemoryDatabase) FindPackageLabelMatch(pattern string) (Packages, err
 			return ans, err
 		}
 		if pack.MatchLabel(re) {
-			ans = append(ans, pack)
+			ans.Put(pack)
 		}
 	}
 
-	return Packages(ans), nil
+	return ans, nil
 }
+func (db *InMemoryDatabase) Clone(set PackageSet) {
 
-func (db *InMemoryDatabase) FindPackageMatch(pattern string) (Packages, error) {
-	var ans []Package
+	for _, p := range db.World().List {
+		set.CreatePackage(p)
+	}
+
+}
+func (db *InMemoryDatabase) FindPackageMatch(pattern string) (*Packages, error) {
+	ans := NewPackages()
 
 	re := regexp.MustCompile(pattern)
 	if re == nil {
-		return nil, errors.New("Invalid regex " + pattern + "!")
+		return ans, errors.New("Invalid regex " + pattern + "!")
 	}
 
 	for _, k := range db.GetPackages() {
@@ -418,9 +421,9 @@ func (db *InMemoryDatabase) FindPackageMatch(pattern string) (Packages, error) {
 		}
 
 		if re.MatchString(pack.HumanReadableString()) {
-			ans = append(ans, pack)
+			ans.Put(pack)
 		}
 	}
 
-	return Packages(ans), nil
+	return ans, nil
 }

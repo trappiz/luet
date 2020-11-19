@@ -306,42 +306,47 @@ func (db *BoltDatabase) RemovePackage(p Package) error {
 	return nil
 }
 
-func (db *BoltDatabase) World() Packages {
+func (db *BoltDatabase) World() *Packages {
 	var packs []DefaultPackage
+	models := NewPackages()
 
 	bolt, err := storm.Open(db.Path, storm.BoltOptions(0600, &bbolt.Options{Timeout: 30 * time.Second}))
 	if err != nil {
-		return Packages([]Package{})
+		return models
 	}
 	defer bolt.Close()
 	err = bolt.All(&packs)
 	if err != nil {
-		return Packages([]Package{})
+		return models
 	}
-	models := make([]Package, len(packs))
-	for i, _ := range packs {
-		models[i] = &packs[i]
+	for i := range packs {
+		models.Put(&packs[i])
 	}
 
-	return Packages(models)
+	return models
+}
+
+func (db *BoltDatabase) Clone(set PackageSet) {
+
+	for _, p := range db.World().List {
+		set.CreatePackage(p)
+	}
+
 }
 
 func (db *BoltDatabase) FindPackageCandidate(p Package) (Package, error) {
 
 	required, err := db.FindPackage(p)
 	if err != nil {
-
 		//	return nil, errors.Wrap(err, "Couldn't find required package in db definition")
-		packages, err := p.Expand(db)
+		packages := db.World().FindPackageVersions(p)
 		//	Info("Expanded", packages, err)
-		if err != nil || len(packages) == 0 {
+		if packages.Len() == 0 {
 			required = p
 		} else {
 			required = packages.Best(nil)
-
 		}
 		return required, nil
-		//required = &DefaultPackage{Name: "test"}
 	}
 
 	return required, err
@@ -350,87 +355,53 @@ func (db *BoltDatabase) FindPackageCandidate(p Package) (Package, error) {
 
 // FindPackages return the list of the packages beloging to cat/name  (any versions in requested range)
 // FIXME: Optimize, see inmemorydb
-func (db *BoltDatabase) FindPackages(p Package) (Packages, error) {
+func (db *BoltDatabase) FindPackages(p Package) (*Packages, error) {
 	// Provides: Treat as the replaced package here
 	if provided, err := db.getProvide(p); err == nil {
 		p = provided
 	}
-	var versionsInWorld []Package
-	for _, w := range db.World() {
-		if w.GetName() != p.GetName() || w.GetCategory() != p.GetCategory() {
-			continue
-		}
 
-		match, err := p.SelectorMatchVersion(w.GetVersion(), nil)
-		if err != nil {
-			return nil, errors.Wrap(err, "Error on match selector")
-		}
-		if match {
-			versionsInWorld = append(versionsInWorld, w)
-		}
-	}
-	return Packages(versionsInWorld), nil
+	return db.World().FindPackageVersions(p), nil
 }
 
 // FindPackageVersions return the list of the packages beloging to cat/name
-func (db *BoltDatabase) FindPackageVersions(p Package) (Packages, error) {
+func (db *BoltDatabase) FindPackageVersions(p Package) (*Packages, error) {
 	// Provides: Treat as the replaced package here
 	if provided, err := db.getProvide(p); err == nil {
 		p = provided
 	}
 
-	var versionsInWorld []Package
-	for _, w := range db.World() {
+	versionsInWorld := NewPackages()
+	for _, w := range db.World().List {
 		if w.GetName() != p.GetName() || w.GetCategory() != p.GetCategory() {
 			continue
 		}
 
-		versionsInWorld = append(versionsInWorld, w)
+		versionsInWorld.Put(w)
 	}
-	return Packages(versionsInWorld), nil
+	return versionsInWorld, nil
 }
 
-func (db *BoltDatabase) FindPackageLabel(labelKey string) (Packages, error) {
-	var ans []Package
-
-	for _, pack := range db.World() {
-		if pack.HasLabel(labelKey) {
-			ans = append(ans, pack)
-		}
-	}
-	return Packages(ans), nil
+func (db *BoltDatabase) FindPackageLabel(labelKey string) (*Packages, error) {
+	return db.World().Search(func(p Package) bool { return p.HasLabel(labelKey) }), nil
 }
 
-func (db *BoltDatabase) FindPackageLabelMatch(pattern string) (Packages, error) {
-	var ans []Package
+func (db *BoltDatabase) FindPackageLabelMatch(pattern string) (*Packages, error) {
 
 	re := regexp.MustCompile(pattern)
 	if re == nil {
 		return nil, errors.New("Invalid regex " + pattern + "!")
 	}
 
-	for _, pack := range db.World() {
-		if pack.MatchLabel(re) {
-			ans = append(ans, pack)
-		}
-	}
-
-	return Packages(ans), nil
+	return db.World().Search(func(p Package) bool { return p.MatchLabel(re) }), nil
 }
 
-func (db *BoltDatabase) FindPackageMatch(pattern string) (Packages, error) {
-	var ans []Package
+func (db *BoltDatabase) FindPackageMatch(pattern string) (*Packages, error) {
 
 	re := regexp.MustCompile(pattern)
 	if re == nil {
 		return nil, errors.New("Invalid regex " + pattern + "!")
 	}
 
-	for _, pack := range db.World() {
-		if re.MatchString(pack.HumanReadableString()) {
-			ans = append(ans, pack)
-		}
-	}
-
-	return Packages(ans), nil
+	return db.World().Search(func(p Package) bool { return re.MatchString(p.HumanReadableString()) }), nil
 }

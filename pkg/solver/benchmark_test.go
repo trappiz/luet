@@ -73,7 +73,7 @@ var _ = Describe("Solver Benchmarks", func() {
 					B := pkg.NewPackage("B"+strconv.Itoa(i), "", []*pkg.DefaultPackage{D}, []*pkg.DefaultPackage{})
 					A := pkg.NewPackage("A"+strconv.Itoa(i), "", []*pkg.DefaultPackage{B}, []*pkg.DefaultPackage{})
 
-					solution, err := s.Install([]pkg.Package{A})
+					solution, err := s.Install(pkg.NewPackages(A))
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
@@ -125,7 +125,7 @@ var _ = Describe("Solver Benchmarks", func() {
 					B := pkg.NewPackage("B"+strconv.Itoa(i), "", []*pkg.DefaultPackage{D}, []*pkg.DefaultPackage{})
 					A := pkg.NewPackage("A"+strconv.Itoa(i), "", []*pkg.DefaultPackage{B}, []*pkg.DefaultPackage{})
 
-					solution, err := s.Install([]pkg.Package{A})
+					solution, err := s.Install(pkg.NewPackages(A))
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(solution).To(ContainElement(PackageAssert{Package: A, Value: true}))
@@ -190,12 +190,11 @@ var _ = Describe("Solver Benchmarks", func() {
 				Expect(err).ToNot(HaveOccurred())
 				_, err = dbInstalled.CreatePackage(G)
 				Expect(err).ToNot(HaveOccurred())
-				fmt.Println("Upgrade starts")
 
 				packages, ass, err := s.Upgrade(false, true)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(packages).To(ContainElement(A))
+				Expect(packages.List).To(ContainElement(A))
 
 				G = pkg.NewPackage("G", "9999", []*pkg.DefaultPackage{}, []*pkg.DefaultPackage{})
 				H = pkg.NewPackage("H", "9999", []*pkg.DefaultPackage{G}, []*pkg.DefaultPackage{})
@@ -204,7 +203,7 @@ var _ = Describe("Solver Benchmarks", func() {
 				A = pkg.NewPackage("A", "9999", []*pkg.DefaultPackage{B}, []*pkg.DefaultPackage{})
 				Expect(ass).To(ContainElement(PackageAssert{Package: A, Value: true}))
 
-				Expect(len(packages)).To(Equal(5))
+				Expect(packages.Len()).To(Equal(5))
 				//	Expect(len(solution)).To(Equal(6))
 
 			})
@@ -236,16 +235,16 @@ var _ = Describe("Solver Benchmarks", func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-				G := pkg.NewPackage("G", strconv.Itoa(50000), []*pkg.DefaultPackage{}, []*pkg.DefaultPackage{})
-				H := pkg.NewPackage("H", strconv.Itoa(50000), []*pkg.DefaultPackage{G}, []*pkg.DefaultPackage{})
-				D := pkg.NewPackage("D", strconv.Itoa(50000), []*pkg.DefaultPackage{H}, []*pkg.DefaultPackage{})
-				B := pkg.NewPackage("B", strconv.Itoa(50000), []*pkg.DefaultPackage{D}, []*pkg.DefaultPackage{})
-				A := pkg.NewPackage("A", strconv.Itoa(50000), []*pkg.DefaultPackage{B}, []*pkg.DefaultPackage{})
+				G := pkg.NewPackage("G", strconv.Itoa(1000), []*pkg.DefaultPackage{}, []*pkg.DefaultPackage{})
+				H := pkg.NewPackage("H", strconv.Itoa(1000), []*pkg.DefaultPackage{G}, []*pkg.DefaultPackage{})
+				D := pkg.NewPackage("D", strconv.Itoa(1000), []*pkg.DefaultPackage{H}, []*pkg.DefaultPackage{})
+				B := pkg.NewPackage("B", strconv.Itoa(1000), []*pkg.DefaultPackage{D}, []*pkg.DefaultPackage{})
+				A := pkg.NewPackage("A", strconv.Itoa(1000), []*pkg.DefaultPackage{B}, []*pkg.DefaultPackage{})
 
-				ass, err := s.Install([]pkg.Package{A})
+				ass, err := s.Install(pkg.NewPackages(A))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(ass).To(ContainElement(PackageAssert{Package: pkg.NewPackage("A", "50000", []*pkg.DefaultPackage{B}, []*pkg.DefaultPackage{}), Value: true}))
+				Expect(ass).To(ContainElement(PackageAssert{Package: pkg.NewPackage("A", "1000", []*pkg.DefaultPackage{B}, []*pkg.DefaultPackage{}), Value: true}))
 				//Expect(ass).To(Equal(5))
 				//	Expect(len(solution)).To(Equal(6))
 
